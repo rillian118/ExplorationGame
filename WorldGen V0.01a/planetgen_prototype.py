@@ -131,6 +131,31 @@ TERRAIN_NAMES: Dict[int, str] = {
 }
 
 
+def colorize_terrain_text(text: str, terrain_code: int, color: bool) -> str:
+    """Apply the terrain color to arbitrary text when ANSI color is enabled."""
+    if not color:
+        return text
+    ansi = TERRAIN_COLORS.get(int(terrain_code), "")
+    if not ansi:
+        return text
+    return f"{ansi}{text}{ANSI_RESET}"
+
+
+def terrain_symbol(terrain_code: int, color: bool = False) -> str:
+    """Return a terrain symbol, optionally ANSI-colored."""
+    code = int(terrain_code)
+    symbol = TERRAIN_SYMBOLS.get(code, "?")
+    return colorize_terrain_text(symbol, code, color)
+
+
+def terrain_name(terrain_code: int, color: bool = False) -> str:
+    """Return a terrain display name, optionally ANSI-colored."""
+    code = int(terrain_code)
+    name = TERRAIN_NAMES.get(code, f"code_{code}")
+    return colorize_terrain_text(name, code, color)
+
+
+
 # -----------------------------
 # Utility functions
 # -----------------------------
@@ -602,17 +627,29 @@ def render_ascii(
         chars = []
         for x in xs:
             code = int(view[y, x])
-            symbol = TERRAIN_SYMBOLS.get(code, "?")
-            if color:
-                ansi = TERRAIN_COLORS.get(code, "")
-                if ansi:
-                    chars.append(f"{ansi}{symbol}{ANSI_RESET}")
-                else:
-                    chars.append(symbol)
-            else:
-                chars.append(symbol)
+            chars.append(terrain_symbol(code, color=color))
         lines.append("".join(chars))
     return "\n".join(lines)
+
+
+def render_legend(color: bool = False) -> str:
+    """Render the terrain legend, optionally with ANSI-colored symbols."""
+    entries = [
+        (TerrainCode.DEEP_LIQUID, "deep liquid"),
+        (TerrainCode.SHALLOW_LIQUID, "shallow liquid"),
+        (TerrainCode.ICE, "ice/polar"),
+        (TerrainCode.LOWLAND, "plains/lowland"),
+        (TerrainCode.HIGHLANDS, "highlands"),
+        (TerrainCode.MOUNTAINS, "mountains"),
+        (TerrainCode.DESERT, "desert"),
+        (TerrainCode.VOLCANIC, "volcanic"),
+    ]
+    parts = [
+        f"{terrain_symbol(code, color=color)}={label}"
+        for code, label in entries
+    ]
+    return "Legend: " + ", ".join(parts)
+
 
 
 def layer_stats(data: Dict[str, np.ndarray | float | PlanetProfile]) -> Dict[str, object]:
@@ -741,10 +778,24 @@ def main() -> None:
     print(f"Temperature K min/avg/max: {stats['temperature_min_k']} / {stats['temperature_avg_k']} / {stats['temperature_max_k']}")
     print(f"Hazard avg/max: {stats['hazard_avg']} / {stats['hazard_max']}")
     print("Terrain mix:")
-    for name, frac in sorted(stats["terrain_mix"].items(), key=lambda kv: kv[0]):
-        print(f"  {name:16s} {frac:.2%}")
+    terrain_items = []
+    terrain = data["terrain"]
+    assert isinstance(terrain, np.ndarray)
+    unique, counts = np.unique(terrain, return_counts=True)
+    total = terrain.size
+    for code, count in zip(unique, counts):
+        name = terrain_name(int(code), color=args.color)
+        frac = float(count) / total
+        sort_name = TERRAIN_NAMES.get(int(code), f"code_{int(code)}")
+        terrain_items.append((sort_name, name, frac))
+    for _sort_name, display_name, frac in sorted(terrain_items, key=lambda item: item[0]):
+        # ANSI escape codes affect visible width, so do not rely on alignment when colored.
+        if args.color:
+            print(f"  {display_name} {frac:.2%}")
+        else:
+            print(f"  {display_name:16s} {frac:.2%}")
 
-    print("\nLegend: ~=deep liquid, ,=shallow liquid, *=ice/polar, .=plains/lowland, #=highlands, ^=mountains, :=desert, !=volcanic\n")
+    print(f"\n{render_legend(color=args.color)}\n")
     print(render_ascii(
         data["terrain"],  # type: ignore[arg-type]
         max_width=args.preview_width,
