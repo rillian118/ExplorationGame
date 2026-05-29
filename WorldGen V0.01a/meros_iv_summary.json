@@ -1,0 +1,40 @@
+{
+  "profile": {
+    "seed": 118,
+    "name": "Meros IV",
+    "width": 120,
+    "height": 60,
+    "radius_km": 6371.0,
+    "gravity_g": 1.0,
+    "age_gyr": 4.5,
+    "solar_flux": 1.0,
+    "atmosphere_pressure_atm": 1.0,
+    "greenhouse_factor": 1.0,
+    "tectonic_activity": 0.65,
+    "volcanic_activity": 0.25,
+    "liquid": "water",
+    "liquid_coverage_target": 0.62,
+    "average_surface_temp_k": 288.0
+  },
+  "stats": {
+    "terrain_mix": {
+      "deep liquid": 0.0728,
+      "shallow liquid": 0.0712,
+      "ice": 0.4736,
+      "lowland": 0.0375,
+      "highlands": 0.0826,
+      "mountains": 0.0089,
+      "volcanic": 0.0213,
+      "polar": 0.2321
+    },
+    "elevation_min": 0.0,
+    "elevation_max": 1.0,
+    "sea_level": 0.5878,
+    "actual_liquid_coverage": 0.62,
+    "temperature_min_k": 207.33,
+    "temperature_avg_k": 248.98,
+    "temperature_max_k": 287.69,
+    "hazard_avg": 25.23,
+    "hazard_max": 203
+  }
+}
