@@ -14,6 +14,7 @@ Core features:
 - simple pseudo-tectonic ridges
 - basic sea-level selection by target liquid coverage
 - ASCII rendering for terminal/MUD-style preview
+- optional ANSI color rendering for MUD/terminal clients
 - compact compressed .npz export
 
 Dependencies:
@@ -97,6 +98,23 @@ TERRAIN_SYMBOLS: Dict[int, str] = {
     TerrainCode.DESERT: ":",
     TerrainCode.VOLCANIC: "!",
     TerrainCode.POLAR: "*",
+}
+
+
+
+ANSI_RESET = "\033[0m"
+
+TERRAIN_COLORS: Dict[int, str] = {
+    TerrainCode.DEEP_LIQUID: "\033[34m",      # blue
+    TerrainCode.SHALLOW_LIQUID: "\033[36m",   # cyan
+    TerrainCode.ICE: "\033[97m",              # bright white
+    TerrainCode.LOWLAND: "\033[32m",          # green
+    TerrainCode.PLAINS: "\033[92m",           # bright green
+    TerrainCode.HIGHLANDS: "\033[33m",        # yellow/brown
+    TerrainCode.MOUNTAINS: "\033[37m",        # light gray
+    TerrainCode.DESERT: "\033[93m",           # bright yellow
+    TerrainCode.VOLCANIC: "\033[31m",         # red
+    TerrainCode.POLAR: "\033[97m",            # bright white
 }
 
 TERRAIN_NAMES: Dict[int, str] = {
@@ -551,6 +569,7 @@ def render_ascii(
     y0: int = 0,
     viewport_width: int | None = None,
     viewport_height: int | None = None,
+    color: bool = False,
 ) -> str:
     """
     Render terrain to plain ASCII.
@@ -580,7 +599,18 @@ def render_ascii(
 
     lines = []
     for y in ys:
-        chars = [TERRAIN_SYMBOLS.get(int(view[y, x]), "?") for x in xs]
+        chars = []
+        for x in xs:
+            code = int(view[y, x])
+            symbol = TERRAIN_SYMBOLS.get(code, "?")
+            if color:
+                ansi = TERRAIN_COLORS.get(code, "")
+                if ansi:
+                    chars.append(f"{ansi}{symbol}{ANSI_RESET}")
+                else:
+                    chars.append(symbol)
+            else:
+                chars.append(symbol)
         lines.append("".join(chars))
     return "\n".join(lines)
 
@@ -674,6 +704,7 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--preview-width", type=int, default=120)
     parser.add_argument("--preview-height", type=int, default=40)
+    parser.add_argument("--color", action="store_true", help="Render ANSI color output.")
 
     parser.add_argument("--export", type=Path, default=None, help="Optional compressed .npz export path.")
     parser.add_argument("--summary", type=Path, default=None, help="Optional JSON summary path.")
@@ -718,6 +749,7 @@ def main() -> None:
         data["terrain"],  # type: ignore[arg-type]
         max_width=args.preview_width,
         max_height=args.preview_height,
+        color=args.color,
     ))
 
     if args.export:
