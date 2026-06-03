@@ -137,3 +137,118 @@ def adapt_generated_system(raw: Any) -> SystemRecord:
         bodies=bodies,
         generation_notes=["Adapted from early generator output."],
     )
+
+def create_demo_system(name: str, seed: int) -> SystemRecord:
+    """Create a small deterministic demo system for import/testing."""
+    primary_id = "star-1"
+
+    bodies = [
+        BodyRecord(
+            id=primary_id,
+            name=f"{name} A",
+            kind="star",
+            classification="G-class main sequence",
+            summary="A stable yellow-white main sequence star.",
+            temperature_k=5778,
+            radius_km=696340,
+            survey_difficulty=1,
+        ),
+        BodyRecord(
+            id="planet-1",
+            name=f"{name} I",
+            kind="planet",
+            classification="rocky inner planet",
+            summary="A hot rocky world orbiting close to the primary.",
+            orbit=OrbitalElements(
+                parent_id=primary_id,
+                semi_major_axis_au=0.42,
+                orbital_period_days=96.0,
+                angle_degrees=35.0,
+            ),
+            radius_km=3300,
+            mass_earth=0.35,
+            temperature_k=480,
+            survey_difficulty=2,
+        ),
+        BodyRecord(
+            id="planet-2",
+            name=f"{name} II",
+            kind="planet",
+            classification="temperate terrestrial planet",
+            summary="A terrestrial world with moderate survey potential.",
+            orbit=OrbitalElements(
+                parent_id=primary_id,
+                semi_major_axis_au=1.08,
+                orbital_period_days=410.0,
+                angle_degrees=140.0,
+            ),
+            radius_km=6400,
+            mass_earth=1.05,
+            temperature_k=288,
+            survey_difficulty=3,
+            children=["planet-2-moon-1"],
+        ),
+        BodyRecord(
+            id="planet-2-moon-1",
+            name=f"{name} II-a",
+            kind="moon",
+            classification="large rocky moon",
+            summary="A tidally locked moon with exposed mineral formations.",
+            orbit=OrbitalElements(
+                parent_id="planet-2",
+                semi_major_axis_au=0.0026,
+                orbital_period_days=27.0,
+                angle_degrees=210.0,
+            ),
+            radius_km=1700,
+            mass_earth=0.012,
+            temperature_k=240,
+            survey_difficulty=2,
+        ),
+        BodyRecord(
+            id="planet-3",
+            name=f"{name} III",
+            kind="planet",
+            classification="gas giant",
+            summary="A large gas giant with strong magnetospheric readings.",
+            orbit=OrbitalElements(
+                parent_id=primary_id,
+                semi_major_axis_au=5.4,
+                orbital_period_days=4320.0,
+                angle_degrees=275.0,
+            ),
+            radius_km=69000,
+            mass_earth=310.0,
+            temperature_k=130,
+            survey_difficulty=4,
+        ),
+    ]
+
+    return SystemRecord(
+        name=name,
+        seed=seed,
+        primary_body_id=primary_id,
+        bodies=bodies,
+        generation_notes=[
+            "Demo v0.2 system generated from systemgen.export CLI.",
+            "Replace this with procedural generator output later.",
+        ],
+    )
+
+
+def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Export a demo stellar system JSON file.")
+    parser.add_argument("--name", required=True, help="System name, e.g. Astalon")
+    parser.add_argument("--seed", required=True, type=int, help="Deterministic generation seed")
+    parser.add_argument("--out", required=True, help="Output JSON path")
+    args = parser.parse_args()
+
+    system = create_demo_system(args.name, args.seed)
+    out_path = write_system_json(system, args.out)
+    print(f"Wrote system JSON: {out_path}")
+
+
+if __name__ == "__main__":
+    main()
