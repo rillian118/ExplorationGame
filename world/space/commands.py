@@ -23,9 +23,6 @@ def get_system_data(system_obj: Any) -> Dict[str, Any]:
 
     The canonical storage location is:
         system_obj.db.system_data
-
-    This helper also accepts raw dictionaries so command code stays tolerant
-    while the storage/import layer evolves.
     """
     if not system_obj:
         return {}
@@ -33,15 +30,16 @@ def get_system_data(system_obj: Any) -> Dict[str, Any]:
     if isinstance(system_obj, dict):
         return system_obj
 
-    system_data = getattr(system_obj, "system_data", None)
-    if isinstance(system_data, dict) and system_data:
-        return system_data
-
     db = getattr(system_obj, "db", None)
+
     if db:
-        db_data = getattr(db, "system_data", None)
-        if isinstance(db_data, dict):
-            return db_data
+        try:
+            data = db.system_data
+        except Exception:
+            data = None
+
+        if isinstance(data, dict):
+            return data
 
     return {}
 
