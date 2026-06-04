@@ -10,21 +10,33 @@ AU_IN_KM = 149_597_870.7
 
 
 def _system_data(system_or_obj: Any) -> Dict[str, Any]:
-    """Accept either a raw system_data dict or a SpaceSystemObject."""
+    """
+    Accept either raw system data, an Evennia _SaverDict, or a SpaceSystemObject.
+    """
+    if system_or_obj is None:
+        return {}
+
     if isinstance(system_or_obj, Mapping):
         return dict(system_or_obj)
 
     try:
-        data = system_or_obj.db.system_data
-        if isinstance(data, dict):
-            return data
+        data = system_or_obj.attributes.get("system_data")
+        if isinstance(data, Mapping):
+            return dict(data)
     except Exception:
         pass
 
     try:
-        data = system_or_obj.attributes.get("system_data")
-        if isinstance(data, dict):
-            return data
+        data = system_or_obj.db.system_data
+        if isinstance(data, Mapping):
+            return dict(data)
+    except Exception:
+        pass
+
+    try:
+        data = system_or_obj.system_data
+        if isinstance(data, Mapping):
+            return dict(data)
     except Exception:
         pass
 
@@ -138,15 +150,12 @@ def _children_by_parent(
 def format_system_list(system_objects: Iterable[Any]) -> str:
     """
     Format the imported system list.
-
-    This function intentionally accepts SpaceSystemObject instances because
-    commands.py passes list_system_objects() directly.
     """
     rows = []
 
     for obj in system_objects:
         data = _system_data(obj)
-        name = data.get("name") or _system_key(obj)
+        name = data.get("name") or getattr(obj, "key", "Unnamed system")
         seed = data.get("seed", "unknown")
         count = len(data.get("bodies", []) or [])
         rows.append((name, seed, count))
@@ -161,7 +170,6 @@ def format_system_list(system_objects: Iterable[Any]) -> str:
         lines.append(f"- {name}    seed={seed}    bodies={count}")
 
     return "\n".join(lines)
-
 
 def format_system_summary(system_data: Dict[str, Any]) -> str:
     """Format a short overview of a stellar system."""
