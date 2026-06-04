@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional
 
-from evennia import DefaultObject, create_object, search_object, search_tag # type: ignore
+from evennia import DefaultObject, create_object, search_object, search_tag
 
 
 SYSTEM_TAG = "space_system"
@@ -52,7 +52,7 @@ def read_system_data(obj: Any) -> Dict[str, Any]:
     This helper is intentionally defensive because stale or older system objects
     may not be SpaceSystemObject instances.
     """
-    if not obj:
+    if obj is None:
         return {}
 
     if isinstance(obj, dict):

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict
 
-from evennia import Command # type: ignore
+from evennia import Command
 
 from .formatter import (
     format_body_detail,
@@ -81,7 +81,7 @@ class CmdSystem(Command):
 
         if current_name:
             found = find_system_object(str(current_name))
-            if found:
+            if found is not None:
                 return found
 
         systems = list_system_objects()
@@ -117,7 +117,7 @@ class CmdSystem(Command):
         if subcmd in ("scan", "show", "summary"):
             system_obj = self._system_from_name_or_default(rest)
 
-            if not system_obj:
+            if system_obj is None:
                 self.caller.msg(
                     "No system selected. Use 'system list' or 'system scan <name>'."
                 )
@@ -125,7 +125,7 @@ class CmdSystem(Command):
 
             system_data = get_system_data(system_obj)
 
-            if not system_data:
+            if system_data == {}:
                 self.caller.msg(
                     f"System object '{get_system_display_name(system_obj)}' exists, "
                     "but it has no stored system data. Try re-importing the system JSON."
@@ -138,7 +138,7 @@ class CmdSystem(Command):
         if subcmd in ("bodies", "bodylist"):
             system_obj = self._system_from_name_or_default(rest)
 
-            if not system_obj:
+            if system_obj is None:
                 self.caller.msg(
                     "No system selected. Use 'system list' or 'system bodies <name>'."
                 )
@@ -146,7 +146,7 @@ class CmdSystem(Command):
 
             system_data = get_system_data(system_obj)
 
-            if not system_data:
+            if system_data == {}:
                 self.caller.msg(
                     f"System object '{get_system_display_name(system_obj)}' exists, "
                     "but it has no stored system data. Try re-importing the system JSON."
@@ -169,7 +169,7 @@ class CmdSystem(Command):
 
             system_obj = self._system_from_name_or_default(system_query)
 
-            if not system_obj:
+            if system_obj is None:
                 self.caller.msg(
                     "No system selected. Use 'system list' or specify "
                     "'system body <body> in <system name>'."
@@ -178,7 +178,7 @@ class CmdSystem(Command):
 
             system_data = get_system_data(system_obj)
 
-            if not system_data:
+            if system_data == {}:
                 self.caller.msg(
                     f"System object '{get_system_display_name(system_obj)}' exists, "
                     "but it has no stored system data. Try re-importing the system JSON."
