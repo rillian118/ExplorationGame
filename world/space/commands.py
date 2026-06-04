@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-from evennia import Command # pyright: ignore[reportMissingImports]
+from evennia import Command # type: ignore
 
 from .formatter import (
     format_body_detail,
@@ -21,10 +21,9 @@ def get_system_data(system_obj: Any) -> Dict[str, Any]:
     """Return stored system data from either a raw dict or an Evennia object."""
     return read_system_data(system_obj)
 
+
 def get_system_display_name(system_obj: Any) -> str:
-    """
-    Return a readable system name for command messages.
-    """
+    """Return a readable system name for command messages."""
     data = get_system_data(system_obj)
     return data.get("name") or getattr(system_obj, "key", "Unknown System")
 
@@ -93,9 +92,7 @@ class CmdSystem(Command):
         return None
 
     def _system_from_name_or_default(self, name: str):
-        """
-        Resolve a named system, or fall back to the default system.
-        """
+        """Resolve a named system, or fall back to the default system."""
         name = (name or "").strip()
 
         if name:
@@ -131,7 +128,7 @@ class CmdSystem(Command):
             if not system_data:
                 self.caller.msg(
                     f"System object '{get_system_display_name(system_obj)}' exists, "
-                    "but it has no stored system data."
+                    "but it has no stored system data. Try re-importing the system JSON."
                 )
                 return
 
@@ -152,7 +149,7 @@ class CmdSystem(Command):
             if not system_data:
                 self.caller.msg(
                     f"System object '{get_system_display_name(system_obj)}' exists, "
-                    "but it has no stored system data."
+                    "but it has no stored system data. Try re-importing the system JSON."
                 )
                 return
 
@@ -184,7 +181,7 @@ class CmdSystem(Command):
             if not system_data:
                 self.caller.msg(
                     f"System object '{get_system_display_name(system_obj)}' exists, "
-                    "but it has no stored system data."
+                    "but it has no stored system data. Try re-importing the system JSON."
                 )
                 return
 

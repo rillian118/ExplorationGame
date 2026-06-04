@@ -1,6 +1,4 @@
-"""
-Text formatters for system and body displays.
-"""
+"""Text formatters for system and body displays."""
 
 from __future__ import annotations
 
@@ -11,15 +9,23 @@ AU_IN_KM = 149_597_870.7
 
 
 def _system_data(system_or_obj: Any) -> Dict[str, Any]:
-    """
-    Accept either a raw system_data dict or a SpaceSystemObject.
-    """
+    """Accept either a raw system_data dict or a SpaceSystemObject."""
     if isinstance(system_or_obj, dict):
         return system_or_obj
 
-    db = getattr(system_or_obj, "db", None)
-    if db:
-        return db.system_data or {}
+    try:
+        data = system_or_obj.db.system_data
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+
+    try:
+        data = system_or_obj.attributes.get("system_data")
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
 
     return {}
 
@@ -41,6 +47,7 @@ def _get_body_classification(body: Dict[str, Any]) -> str:
 
 
 def format_period(days: Optional[float]) -> str:
+    """Format an orbital period stored in days."""
     if days is None:
         return "unknown period"
 
@@ -60,6 +67,12 @@ def format_period(days: Optional[float]) -> str:
 
 
 def format_orbital_distance(body: Dict[str, Any]) -> str:
+    """
+    Format orbital distance based on body type.
+
+    Stars do not show an orbit. Moons show kilometers because their AU values
+    are too small to display meaningfully as AU.
+    """
     orbit = body.get("orbit") or {}
     axis_au = orbit.get("semi_major_axis_au")
     kind = _get_body_kind(body).lower()
@@ -89,6 +102,7 @@ def format_orbital_distance(body: Dict[str, Any]) -> str:
 
 
 def format_body_summary_line(body: Dict[str, Any], indent: int = 0) -> str:
+    """Format a compact one-line body summary for system body lists."""
     prefix = " " * indent
     name = _get_body_name(body)
     kind = _get_body_kind(body)
@@ -107,7 +121,9 @@ def format_body_summary_line(body: Dict[str, Any], indent: int = 0) -> str:
     )
 
 
-def _children_by_parent(bodies: Iterable[Dict[str, Any]]) -> Dict[Optional[str], List[Dict[str, Any]]]:
+def _children_by_parent(
+    bodies: Iterable[Dict[str, Any]],
+) -> Dict[Optional[str], List[Dict[str, Any]]]:
     grouped: Dict[Optional[str], List[Dict[str, Any]]] = {}
 
     for body in bodies:
@@ -147,11 +163,7 @@ def format_system_list(system_objects: Iterable[Any]) -> str:
 
 
 def format_system_summary(system_data: Dict[str, Any]) -> str:
-    """
-    Format a short overview of a stellar system.
-
-    Kept under the original function name expected by commands.py.
-    """
+    """Format a short overview of a stellar system."""
     system_data = _system_data(system_data)
 
     name = system_data.get("name", "Unknown System")
@@ -184,11 +196,7 @@ def format_system_summary(system_data: Dict[str, Any]) -> str:
 
 
 def format_body_list(system_data: Dict[str, Any]) -> str:
-    """
-    Format the known bodies in a system as a parent/child tree.
-
-    Kept under the original function name expected by commands.py.
-    """
+    """Format the known bodies in a system as a parent/child tree."""
     system_data = _system_data(system_data)
 
     name = system_data.get("name", "Unknown System")
@@ -222,7 +230,7 @@ def format_body_detail(system_data: Dict[str, Any], body: Dict[str, Any]) -> str
     """
     Format a detailed view for a single stellar body.
 
-    Signature matches the original command code:
+    Signature matches the command code:
         format_body_detail(system_data, body)
     """
     system_data = _system_data(system_data)
