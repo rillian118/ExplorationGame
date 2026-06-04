@@ -19,10 +19,7 @@ from .models import find_body, find_system_object, list_system_objects
 
 def get_system_data(system_obj: Any) -> Dict[str, Any]:
     """
-    Return the stored JSON/dict data from a SpaceSystemObject.
-
-    The canonical storage location is:
-        system_obj.db.system_data
+    Return stored system data from either a raw dict or an Evennia system object.
     """
     if not system_obj:
         return {}
@@ -30,19 +27,28 @@ def get_system_data(system_obj: Any) -> Dict[str, Any]:
     if isinstance(system_obj, dict):
         return system_obj
 
-    db = getattr(system_obj, "db", None)
-
-    if db:
-        try:
-            data = db.system_data
-        except Exception:
-            data = None
-
+    try:
+        data = system_obj.system_data
         if isinstance(data, dict):
             return data
+    except Exception:
+        pass
+
+    try:
+        data = system_obj.db.system_data
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+
+    try:
+        data = system_obj.attributes.get("system_data")
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
 
     return {}
-
 
 def get_system_display_name(system_obj: Any) -> str:
     """
