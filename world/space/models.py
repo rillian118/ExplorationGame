@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional
 
-from evennia import DefaultObject, create_object, search_object, search_tag
+from evennia import DefaultObject, create_object, search_object, search_tag # type: ignore
 
 
 SYSTEM_TAG = "space_system"
@@ -47,10 +47,7 @@ def read_system_data(obj: Any) -> Dict[str, Any]:
     Safely read stored system data from a raw dict or an Evennia object.
 
     Expected canonical storage:
-        obj.db.system_data
-
-    This helper is intentionally defensive because stale or older system objects
-    may not be SpaceSystemObject instances.
+        obj.attributes.get("system_data")
     """
     if obj is None:
         return {}
@@ -59,14 +56,14 @@ def read_system_data(obj: Any) -> Dict[str, Any]:
         return obj
 
     try:
-        data = obj.db.system_data
+        data = obj.attributes.get("system_data")
         if isinstance(data, dict):
             return data
     except Exception:
         pass
 
     try:
-        data = obj.attributes.get("system_data")
+        data = obj.db.system_data
         if isinstance(data, dict):
             return data
     except Exception:
@@ -86,14 +83,17 @@ def write_system_data(obj: Any, system_data: Dict[str, Any]) -> None:
     """
     Write system data directly to Evennia Attributes.
 
-    This works even if obj is an older/stale DefaultObject rather than a
-    SpaceSystemObject instance.
+    Uses AttributeHandler.add() instead of obj.db assignment so this works
+    reliably even on older/stale DefaultObject instances.
     """
+    if obj is None:
+        raise ValueError("Cannot write system data to None.")
+
     data = dict(system_data or {})
 
-    obj.db.system_data = data
-    obj.db.system_name = data.get("name", "")
-    obj.db.system_seed = data.get("seed")
+    obj.attributes.add("system_data", data)
+    obj.attributes.add("system_name", data.get("name", ""))
+    obj.attributes.add("system_seed", data.get("seed"))
 
     obj.tags.add(SYSTEM_TAG, category=SYSTEM_TAG_CATEGORY)
 

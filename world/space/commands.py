@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict
 
-from evennia import Command
+from evennia import Command # type: ignore
 
 from .formatter import (
     format_body_detail,
