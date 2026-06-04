@@ -1,23 +1,16 @@
-"""
-JSON import/export helpers for systemgen records.
-
-The intended workflow is:
-
-    generated = generate_system(...)
-    record = adapt_generated_system(generated)
-    write_system_json(record, "Astalon.system.json")
-
-If your generator already returns dictionaries, you can bypass the adapter and
-call write_system_json() with a SystemRecord or compatible dict.
-"""
+"""JSON import/export helpers and CLI for generated stellar-system records."""
 
 from __future__ import annotations
 
+import argparse
 import json
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Dict, Mapping, Union
+from typing import Any, Dict, Union
 
+from .adapter import adapt_generated_system
 from .schema import BodyRecord, OrbitalElements, SystemRecord
+
 
 JsonLike = Union[SystemRecord, Mapping[str, Any]]
 
@@ -43,103 +36,8 @@ def read_system_json(path: Union[str, Path]) -> SystemRecord:
     return SystemRecord.from_dict(data)
 
 
-def adapt_generated_system(raw: Any) -> SystemRecord:
-    """Best-effort adapter for early generator outputs.
-
-    This accepts either:
-    - a SystemRecord,
-    - a dict that already matches the v0.2 schema,
-    - a simple object/dict with name, seed, star, planets, and moons fields.
-
-    You can replace or specialize this once the generator's internal objects are
-    settled.  The importer only needs the exported JSON schema to remain stable.
-    """
-    if isinstance(raw, SystemRecord):
-        return raw
-
-    if isinstance(raw, Mapping) and "bodies" in raw:
-        return SystemRecord.from_dict(dict(raw))
-
-    def get(obj: Any, key: str, default: Any = None) -> Any:
-        if isinstance(obj, Mapping):
-            return obj.get(key, default)
-        return getattr(obj, key, default)
-
-    name = str(get(raw, "name", "Unnamed System"))
-    seed = int(get(raw, "seed", 0))
-    bodies = []
-
-    star = get(raw, "star", None) or get(raw, "primary", None)
-    if star is not None:
-        star_name = str(get(star, "name", f"{name} A"))
-        bodies.append(
-            BodyRecord(
-                id="star-1",
-                name=star_name,
-                kind="star",
-                classification=str(get(star, "classification", get(star, "spectral_class", "star"))),
-                summary=str(get(star, "summary", "Primary stellar body.")),
-                temperature_k=get(star, "temperature_k", None),
-                radius_km=get(star, "radius_km", None),
-            )
-        )
-        primary_body_id = "star-1"
-    else:
-        primary_body_id = None
-
-    for idx, planet in enumerate(get(raw, "planets", []) or [], start=1):
-        planet_id = f"planet-{idx}"
-        planet_name = str(get(planet, "name", f"{name} {idx}"))
-        orbit = OrbitalElements(
-            parent_id=primary_body_id,
-            semi_major_axis_au=float(get(planet, "orbit_radius_au", get(planet, "semi_major_axis_au", idx))),
-            orbital_period_days=float(get(planet, "orbital_period_days", idx * 365.0)),
-            angle_degrees=float(get(planet, "angle_degrees", 0.0)),
-        )
-        bodies.append(
-            BodyRecord(
-                id=planet_id,
-                name=planet_name,
-                kind=str(get(planet, "kind", "planet")),
-                classification=str(get(planet, "classification", get(planet, "planet_type", "planet"))),
-                summary=str(get(planet, "summary", "Planetary body.")),
-                orbit=orbit,
-                radius_km=get(planet, "radius_km", None),
-                mass_earth=get(planet, "mass_earth", None),
-                temperature_k=get(planet, "temperature_k", None),
-                survey_difficulty=int(get(planet, "survey_difficulty", 1)),
-            )
-        )
-
-        for moon_idx, moon in enumerate(get(planet, "moons", []) or [], start=1):
-            moon_id = f"planet-{idx}-moon-{moon_idx}"
-            bodies.append(
-                BodyRecord(
-                    id=moon_id,
-                    name=str(get(moon, "name", f"{planet_name}-{moon_idx}")),
-                    kind="moon",
-                    classification=str(get(moon, "classification", "moon")),
-                    summary=str(get(moon, "summary", "Natural satellite.")),
-                    orbit=OrbitalElements(
-                        parent_id=planet_id,
-                        semi_major_axis_au=float(get(moon, "orbit_radius_au", 0.002)),
-                        orbital_period_days=float(get(moon, "orbital_period_days", 28.0)),
-                        angle_degrees=float(get(moon, "angle_degrees", 0.0)),
-                    ),
-                    survey_difficulty=int(get(moon, "survey_difficulty", 1)),
-                )
-            )
-
-    return SystemRecord(
-        name=name,
-        seed=seed,
-        primary_body_id=primary_body_id,
-        bodies=bodies,
-        generation_notes=["Adapted from early generator output."],
-    )
-
 def create_demo_system(name: str, seed: int) -> SystemRecord:
-    """Create a small deterministic demo system for import/testing."""
+    """Create the old small deterministic demo system for import/testing."""
     primary_id = "star-1"
 
     bodies = [
@@ -231,23 +129,40 @@ def create_demo_system(name: str, seed: int) -> SystemRecord:
         bodies=bodies,
         generation_notes=[
             "Demo v0.2 system generated from systemgen.export CLI.",
-            "Replace this with procedural generator output later.",
+            "Use --mode procedural for the procedural generator path.",
         ],
     )
 
 
-def main() -> None:
-    import argparse
+def generate_procedural_system(name: str, seed: int) -> SystemRecord:
+    """Generate through the stable generator entry point and adapt if needed."""
+    from .generators import generate_system
 
-    parser = argparse.ArgumentParser(description="Export a demo stellar system JSON file.")
+    raw = generate_system(name=name, seed=seed)
+    return adapt_generated_system(raw)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Export a stellar system JSON file.")
     parser.add_argument("--name", required=True, help="System name, e.g. Astalon")
     parser.add_argument("--seed", required=True, type=int, help="Deterministic generation seed")
     parser.add_argument("--out", required=True, help="Output JSON path")
+    parser.add_argument(
+        "--mode",
+        choices=("procedural", "demo"),
+        default="procedural",
+        help="Export source. Default: procedural.",
+    )
     args = parser.parse_args()
 
-    system = create_demo_system(args.name, args.seed)
+    if args.mode == "demo":
+        system = create_demo_system(args.name, args.seed)
+    else:
+        system = generate_procedural_system(args.name, args.seed)
+
     out_path = write_system_json(system, args.out)
-    print(f"Wrote system JSON: {out_path}")
+    body_count = len(system.bodies)
+    print(f"Wrote system JSON: {out_path} ({system.name}, seed={system.seed}, bodies={body_count})")
 
 
 if __name__ == "__main__":

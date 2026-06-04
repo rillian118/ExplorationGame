@@ -1,9 +1,9 @@
 """
 Stable JSON-facing schema for generated stellar systems.
 
-This module is intentionally independent from Evennia.  The generator can create
-these dataclasses, export them to JSON, and the game server can import that JSON
-without needing to import the procedural generation code.
+This module is intentionally independent from Evennia. The standalone generator
+can create these dataclasses, export them to JSON, and the Evennia game server
+can import that JSON without importing procedural-generation code.
 """
 
 from __future__ import annotations
@@ -17,12 +17,7 @@ SCHEMA_VERSION = "0.2"
 
 @dataclass
 class OrbitalElements:
-    """Simplified orbital metadata for a body in a 2D orbital plane.
-
-    This is not intended to be a full astrophysics model yet.  It gives the game
-    enough data to display system maps, calculate approximate travel distances,
-    and later derive deterministic moving positions from an epoch.
-    """
+    """Simplified orbital metadata for a body in a 2D orbital plane."""
 
     parent_id: Optional[str] = None
     semi_major_axis_au: float = 0.0
@@ -69,7 +64,8 @@ class SystemRecord:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SystemRecord":
         bodies: List[BodyRecord] = []
-        for raw_body in data.get("bodies", []):
+
+        for raw_body in data.get("bodies", []) or []:
             raw_orbit = raw_body.get("orbit") or {}
             body = BodyRecord(
                 id=raw_body["id"],
@@ -82,9 +78,9 @@ class SystemRecord:
                 mass_earth=raw_body.get("mass_earth"),
                 temperature_k=raw_body.get("temperature_k"),
                 survey_difficulty=int(raw_body.get("survey_difficulty", 1)),
-                survey_tags=list(raw_body.get("survey_tags", [])),
-                children=list(raw_body.get("children", [])),
-                extra=dict(raw_body.get("extra", {})),
+                survey_tags=list(raw_body.get("survey_tags", []) or []),
+                children=list(raw_body.get("children", []) or []),
+                extra=dict(raw_body.get("extra", {}) or {}),
             )
             bodies.append(body)
 
@@ -94,13 +90,15 @@ class SystemRecord:
             schema_version=data.get("schema_version", SCHEMA_VERSION),
             primary_body_id=data.get("primary_body_id"),
             bodies=bodies,
-            generation_notes=list(data.get("generation_notes", [])),
-            extra=dict(data.get("extra", {})),
+            generation_notes=list(data.get("generation_notes", []) or []),
+            extra=dict(data.get("extra", {}) or {}),
         )
 
     def get_body(self, name_or_id: str) -> Optional[BodyRecord]:
         needle = name_or_id.strip().lower()
+
         for body in self.bodies:
             if body.id.lower() == needle or body.name.lower() == needle:
                 return body
+
         return None
