@@ -33,17 +33,32 @@ PLANET_CLASSES = [
 ]
 
 ROMAN_NUMERALS = [
-    "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"
+    "I",
+    "II",
+    "III",
+    "IV",
+    "V",
+    "VI",
+    "VII",
+    "VIII",
+    "IX",
+    "X",
+    "XI",
+    "XII",
 ]
+
+MOON_SUFFIXES = "abcdefghijklmnopqrstuvwxyz"
 
 
 def _kepler_period_days(axis_au: float, star_mass_solar: float) -> float:
     """Very rough orbital period from semi-major axis and stellar mass."""
-    years = (axis_au ** 3 / max(star_mass_solar, 0.1)) ** 0.5
+    years = (axis_au**3 / max(star_mass_solar, 0.1)) ** 0.5
     return years * 365.25
 
 
-def _planet_profile(rng: random.Random, axis_au: float) -> tuple[str, float, float, float, int, str]:
+def _planet_profile(
+    rng: random.Random, axis_au: float
+) -> tuple[str, float, float, float, int, str]:
     """Return classification, radius_km, mass_earth, temp_k, difficulty, summary."""
     if axis_au < 0.55:
         classification = rng.choice(["scorched rocky planet", "rocky inner planet"])
@@ -53,7 +68,9 @@ def _planet_profile(rng: random.Random, axis_au: float) -> tuple[str, float, flo
         difficulty = 2
         summary = "A heat-blasted inner world with limited surface stability."
     elif axis_au < 1.8:
-        classification = rng.choice(["dry terrestrial planet", "temperate terrestrial planet", "ice-rich terrestrial planet"])
+        classification = rng.choice(
+            ["dry terrestrial planet", "temperate terrestrial planet", "ice-rich terrestrial planet"]
+        )
         radius = rng.uniform(4500, 7600)
         mass = rng.uniform(0.45, 1.8)
         temp = rng.uniform(220, 330)
@@ -87,10 +104,73 @@ def _moon_count(rng: random.Random, classification: str) -> int:
     return 0
 
 
+def _build_sorted_moons(
+    rng: random.Random,
+    *,
+    planet_id: str,
+    planet_name: str,
+    moon_count: int,
+    planet_temperature_k: float,
+    planet_survey_difficulty: int,
+) -> List[BodyRecord]:
+    """
+    Generate moons, sort them by orbital distance, then assign suffixes.
+
+    This keeps displayed moon names aligned with the order players see in the
+    orbital tree: inner moons become -a, then -b, then -c, etc.
+    """
+    moon_specs = []
+
+    for _ in range(moon_count):
+        moon_distance_au = rng.uniform(0.0012, 0.0085)
+        moon_specs.append(
+            {
+                "distance_au": moon_distance_au,
+                "classification": rng.choice(["small rocky moon", "icy moon", "large rocky moon"]),
+                "period_days": rng.uniform(6.0, 65.0),
+                "angle_degrees": rng.uniform(0, 360),
+                "eccentricity": rng.uniform(0.0, 0.08),
+                "inclination_degrees": rng.uniform(0.0, 6.0),
+                "radius_km": rng.uniform(450, 2900),
+                "mass_earth": rng.uniform(0.001, 0.04),
+                "temperature_k": max(30, planet_temperature_k - rng.uniform(5, 45)),
+            }
+        )
+
+    moon_specs.sort(key=lambda spec: spec["distance_au"])
+
+    moons: List[BodyRecord] = []
+    for index, spec in enumerate(moon_specs, start=1):
+        suffix = MOON_SUFFIXES[index - 1]
+        moon_id = f"{planet_id}-moon-{index}"
+        moons.append(
+            BodyRecord(
+                id=moon_id,
+                name=f"{planet_name}-{suffix}",
+                kind="moon",
+                classification=spec["classification"],
+                summary="A natural satellite with localized survey potential.",
+                orbit=OrbitalElements(
+                    parent_id=planet_id,
+                    semi_major_axis_au=round(spec["distance_au"], 6),
+                    orbital_period_days=round(spec["period_days"], 2),
+                    angle_degrees=round(spec["angle_degrees"], 1),
+                    eccentricity=round(spec["eccentricity"], 3),
+                    inclination_degrees=round(spec["inclination_degrees"], 2),
+                ),
+                radius_km=round(spec["radius_km"]),
+                mass_earth=round(spec["mass_earth"], 4),
+                temperature_k=round(spec["temperature_k"]),
+                survey_difficulty=max(1, planet_survey_difficulty - 1),
+            )
+        )
+
+    return moons
+
+
 def generate_system(name: str, seed: int) -> SystemRecord:
     """Generate a deterministic SystemRecord for the given name and seed."""
     rng = random.Random(seed)
-
     star_class, star_mass, star_radius_scale, star_temp, star_summary = rng.choice(STAR_CLASSES)
     primary_id = "star-1"
 
@@ -143,34 +223,16 @@ def generate_system(name: str, seed: int) -> SystemRecord:
         )
         bodies.append(planet)
 
-        moon_ids: List[str] = []
-        for moon_index in range(1, _moon_count(rng, classification) + 1):
-            moon_id = f"{planet_id}-moon-{moon_index}"
-            moon_ids.append(moon_id)
-            moon_distance_au = rng.uniform(0.0012, 0.0085)
-            bodies.append(
-                BodyRecord(
-                    id=moon_id,
-                    name=f"{planet_name}-{chr(96 + moon_index)}",
-                    kind="moon",
-                    classification=rng.choice(["small rocky moon", "icy moon", "large rocky moon"]),
-                    summary="A natural satellite with localized survey potential.",
-                    orbit=OrbitalElements(
-                        parent_id=planet_id,
-                        semi_major_axis_au=round(moon_distance_au, 6),
-                        orbital_period_days=round(rng.uniform(6.0, 65.0), 2),
-                        angle_degrees=round(rng.uniform(0, 360), 1),
-                        eccentricity=round(rng.uniform(0.0, 0.08), 3),
-                        inclination_degrees=round(rng.uniform(0.0, 6.0), 2),
-                    ),
-                    radius_km=round(rng.uniform(450, 2900)),
-                    mass_earth=round(rng.uniform(0.001, 0.04), 4),
-                    temperature_k=round(max(30, temp - rng.uniform(5, 45))),
-                    survey_difficulty=max(1, difficulty - 1),
-                )
-            )
-
-        planet.children = moon_ids
+        moons = _build_sorted_moons(
+            rng,
+            planet_id=planet_id,
+            planet_name=planet_name,
+            moon_count=_moon_count(rng, classification),
+            planet_temperature_k=temp,
+            planet_survey_difficulty=difficulty,
+        )
+        planet.children = [moon.id for moon in moons]
+        bodies.extend(moons)
 
     return SystemRecord(
         name=name,
