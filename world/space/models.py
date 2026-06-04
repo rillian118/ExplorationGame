@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional
 
+from collections.abc import Mapping
+
 from evennia import DefaultObject, create_object, search_object, search_tag # type: ignore
 
 
@@ -30,7 +32,10 @@ class SpaceSystemObject(DefaultObject):
 
     @property
     def system_data(self) -> Dict[str, Any]:
-        return self.db.system_data or {}
+        data = self.attributes.get("system_data")
+        if isinstance(data, Mapping):
+            return dict(data)
+        return {}
 
     @system_data.setter
     def system_data(self, value: Dict[str, Any]) -> None:
@@ -44,35 +49,33 @@ def system_key(name: str) -> str:
 
 def read_system_data(obj: Any) -> Dict[str, Any]:
     """
-    Safely read stored system data from a raw dict or an Evennia object.
-
-    Expected canonical storage:
-        obj.attributes.get("system_data")
+    Safely read stored system data from a raw dict, Evennia _SaverDict,
+    or Evennia object.
     """
     if obj is None:
         return {}
 
-    if isinstance(obj, dict):
-        return obj
+    if isinstance(obj, Mapping):
+        return dict(obj)
 
     try:
         data = obj.attributes.get("system_data")
-        if isinstance(data, dict):
-            return data
+        if isinstance(data, Mapping):
+            return dict(data)
     except Exception:
         pass
 
     try:
         data = obj.db.system_data
-        if isinstance(data, dict):
-            return data
+        if isinstance(data, Mapping):
+            return dict(data)
     except Exception:
         pass
 
     try:
         data = obj.system_data
-        if isinstance(data, dict):
-            return data
+        if isinstance(data, Mapping):
+            return dict(data)
     except Exception:
         pass
 

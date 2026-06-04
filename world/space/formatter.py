@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional
 
+from collections.abc import Mapping
 
 AU_IN_KM = 149_597_870.7
 
 
 def _system_data(system_or_obj: Any) -> Dict[str, Any]:
     """Accept either a raw system_data dict or a SpaceSystemObject."""
-    if isinstance(system_or_obj, dict):
-        return system_or_obj
+    if isinstance(system_or_obj, Mapping):
+        return dict(system_or_obj)
 
     try:
         data = system_or_obj.db.system_data
