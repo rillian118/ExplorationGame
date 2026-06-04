@@ -269,8 +269,70 @@ def format_body_detail(body: Dict[str, Any]) -> str:
 
     return "\n".join(lines)
 
-def format_body_list(system: Dict[str, Any]) -> str:
+def format_body_list(system_data: Dict[str, Any]) -> str:
     """
     Backward-compatible alias for older command code.
     """
-    return format_system_bodies(system)
+    return format_system_bodies(system_data)
+
+
+def format_system_summary(system_data: Dict[str, Any]) -> str:
+    """
+    Backward-compatible alias for older command code.
+    """
+    return format_system_scan(system_data)
+
+
+def format_body_detail(system_data: Dict[str, Any], body: Dict[str, Any]) -> str:
+    """
+    Backward-compatible detailed body formatter matching the original command signature.
+    """
+    name = _get_body_name(body)
+    kind = _get_body_kind(body)
+    classification = _get_body_classification(body)
+    summary = body.get("summary") or "No summary available."
+    orbit = body.get("orbit") or {}
+    tags = ", ".join(body.get("survey_tags") or []) or "none"
+
+    lines: List[str] = [
+        f"|w{name}|n",
+        f"System: {system_data.get('name', 'Unknown System')}",
+        f"ID: {body.get('id', 'unknown')}",
+        f"Kind: {kind}",
+        f"Classification: {classification}",
+    ]
+
+    if kind.lower() != "star":
+        lines.extend(
+            [
+                f"Orbit radius: {format_orbital_distance(body)}",
+                f"Orbital period: {format_period(orbit.get('orbital_period_days'))}",
+                f"Current angle: {orbit.get('angle_degrees', '—')} degrees",
+            ]
+        )
+
+    lines.extend(
+        [
+            f"Survey difficulty: {body.get('survey_difficulty', 1)}",
+            f"Survey tags: {tags}",
+        ]
+    )
+
+    radius = body.get("radius_km")
+    mass = body.get("mass_earth")
+    temperature = body.get("temperature_k")
+
+    if radius is not None or mass is not None or temperature is not None:
+        lines.append("")
+        lines.append("Physical readings:")
+        if radius is not None:
+            lines.append(f"  Radius: {float(radius):,.0f} km")
+        if mass is not None:
+            lines.append(f"  Mass: {float(mass):.3g} Earth masses")
+        if temperature is not None:
+            lines.append(f"  Temperature: {float(temperature):,.0f} K")
+
+    if summary:
+        lines.extend(["", summary])
+
+    return "\n".join(lines)
