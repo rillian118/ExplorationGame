@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional
 
-from evennia import DefaultObject, create_object, search_object, search_tag
+from evennia import DefaultObject, create_object, search_object, search_tag # type: ignore
 
 SYSTEM_TAG = "space_system"
 SYSTEM_TAG_CATEGORY = "space"
@@ -41,6 +41,44 @@ class SpaceSystemObject(DefaultObject):
 def system_key(name: str) -> str:
     return f"{SYSTEM_KEY_PREFIX}{name.strip()}"
 
+def read_system_data(obj: Any) -> Dict[str, Any]:
+    """
+    Safely read stored system data from a raw dict or an Evennia object.
+
+    Expected canonical storage:
+        obj.db.system_data
+
+    This helper is intentionally defensive because stale or older system objects
+    may not be SpaceSystemObject instances.
+    """
+    if not obj:
+        return {}
+
+    if isinstance(obj, dict):
+        return obj
+
+    try:
+        data = obj.db.system_data
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+
+    try:
+        data = obj.attributes.get("system_data")
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+
+    try:
+        data = obj.system_data
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+
+    return {}
 
 def list_system_objects() -> List[SpaceSystemObject]:
     """Return all persistent system objects."""
