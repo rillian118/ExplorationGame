@@ -167,6 +167,48 @@ def _build_sorted_moons(
 
     return moons
 
+def _normalize_moon_suffixes(bodies: List[BodyRecord]) -> None:
+    """
+    Rename moons so suffixes match orbital order.
+
+    For each planet:
+      innermost moon -> -a
+      next moon      -> -b
+      next moon      -> -c
+
+    Also rewrites moon IDs and the parent planet's children list.
+    """
+    planets = [body for body in bodies if body.kind == "planet"]
+
+    for planet in planets:
+        moons = [
+            body
+            for body in bodies
+            if body.kind == "moon"
+            and body.orbit
+            and body.orbit.parent_id == planet.id
+        ]
+
+        if not moons:
+            planet.children = []
+            continue
+
+        moons.sort(
+            key=lambda moon: (
+                moon.orbit.semi_major_axis_au if moon.orbit else 0.0,
+                moon.name,
+            )
+        )
+
+        new_child_ids: List[str] = []
+
+        for index, moon in enumerate(moons, start=1):
+            suffix = chr(96 + index)  # 1 -> a, 2 -> b, 3 -> c
+            moon.id = f"{planet.id}-moon-{index}"
+            moon.name = f"{planet.name}-{suffix}"
+            new_child_ids.append(moon.id)
+
+        planet.children = new_child_ids
 
 def generate_system(name: str, seed: int) -> SystemRecord:
     """Generate a deterministic SystemRecord for the given name and seed."""
@@ -233,6 +275,8 @@ def generate_system(name: str, seed: int) -> SystemRecord:
         )
         planet.children = [moon.id for moon in moons]
         bodies.extend(moons)
+
+    _normalize_moon_suffixes(bodies)
 
     return SystemRecord(
         name=name,
