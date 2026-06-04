@@ -2,15 +2,14 @@
 Evennia persistence objects for generated stellar systems.
 
 For v0.2, each system is stored as a hidden Evennia object with JSON-compatible
-system data on .db.system_data. This avoids adding a separate database model
-while still using Evennia's normal persistence layer.
+system data on .db.system_data.
 """
 
 from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional
 
-from evennia import DefaultObject, create_object, search_object, search_tag
+from evennia import DefaultObject, create_object, search_object, search_tag # type: ignore
 
 
 SYSTEM_TAG = "space_system"
@@ -44,24 +43,13 @@ def system_key(name: str) -> str:
     return f"{SYSTEM_KEY_PREFIX}{name.strip()}"
 
 
-def _read_system_data(obj: Any) -> Dict[str, Any]:
-    """
-    Safely read stored system data from a system object.
-
-    This avoids relying on AttributeHandler truthiness.
-    """
+def read_system_data(obj: Any) -> Dict[str, Any]:
+    """Safely read stored system data from a raw dict or Evennia object."""
     if not obj:
         return {}
 
     if isinstance(obj, dict):
         return obj
-
-    try:
-        data = obj.system_data
-        if isinstance(data, dict):
-            return data
-    except Exception:
-        pass
 
     try:
         data = obj.db.system_data
@@ -77,16 +65,42 @@ def _read_system_data(obj: Any) -> Dict[str, Any]:
     except Exception:
         pass
 
+    try:
+        data = obj.system_data
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+
     return {}
 
 
-def list_system_objects() -> List[SpaceSystemObject]:
-    """Return all persistent system objects, preferring populated tagged objects."""
+def write_system_data(obj: Any, system_data: Dict[str, Any]) -> None:
+    """
+    Write system data directly to Evennia Attributes.
+
+    This works even if obj is an older/stale DefaultObject rather than a
+    SpaceSystemObject instance.
+    """
+    data = dict(system_data or {})
+
+    obj.db.system_data = data
+    obj.db.system_name = data.get("name", "")
+    obj.db.system_seed = data.get("seed")
+
+    obj.tags.add(SYSTEM_TAG, category=SYSTEM_TAG_CATEGORY)
+
+    if data.get("name"):
+        obj.tags.add(str(data["name"]), category=f"{SYSTEM_TAG_CATEGORY}:name")
+
+
+def list_system_objects() -> List[Any]:
+    """Return all tagged persistent system objects, populated objects first."""
     objects = list(search_tag(SYSTEM_TAG, category=SYSTEM_TAG_CATEGORY) or [])
 
     objects.sort(
         key=lambda obj: (
-            0 if _read_system_data(obj) else 1,
+            0 if read_system_data(obj) else 1,
             str(getattr(obj, "key", "")).lower(),
         )
     )
@@ -94,15 +108,14 @@ def list_system_objects() -> List[SpaceSystemObject]:
     return objects
 
 
-def find_system_object(name: str) -> Optional[SpaceSystemObject]:
+def find_system_object(name: str) -> Optional[Any]:
     """
     Find a persistent system object by display name or object key.
 
-    Important: prefer tagged system objects with stored data before doing a raw
-    object-key lookup. Otherwise stale/empty objects named "System: <name>" can
-    shadow the imported system object.
+    Populated tagged objects are preferred over raw exact-key matches.
     """
     normalized = (name or "").strip()
+
     if not normalized:
         return None
 
@@ -112,24 +125,23 @@ def find_system_object(name: str) -> Optional[SpaceSystemObject]:
     tagged_matches = []
 
     for obj in list_system_objects():
-        data = _read_system_data(obj)
+        data = read_system_data(obj)
         data_name = str(data.get("name", "")).lower()
         obj_key = str(getattr(obj, "key", "")).lower()
 
         if data_name == lower or obj_key == lower or obj_key == desired_key:
             tagged_matches.append(obj)
 
-    populated = [obj for obj in tagged_matches if _read_system_data(obj)]
+    populated = [obj for obj in tagged_matches if read_system_data(obj)]
     if populated:
         return populated[0]
 
     if tagged_matches:
         return tagged_matches[0]
 
-    # Final fallback: raw key search. This is intentionally last.
     candidates = search_object(system_key(normalized), exact=True) or []
 
-    populated_candidates = [obj for obj in candidates if _read_system_data(obj)]
+    populated_candidates = [obj for obj in candidates if read_system_data(obj)]
     if populated_candidates:
         return populated_candidates[0]
 
@@ -139,7 +151,7 @@ def find_system_object(name: str) -> Optional[SpaceSystemObject]:
     return None
 
 
-def create_or_update_system_object(system_data: Dict[str, Any]) -> SpaceSystemObject:
+def create_or_update_system_object(system_data: Dict[str, Any]) -> Any:
     """Create or update the hidden Evennia object for a generated system."""
     name = system_data.get("name")
 
@@ -155,10 +167,7 @@ def create_or_update_system_object(system_data: Dict[str, Any]) -> SpaceSystemOb
             nohome=True,
         )
 
-    obj.system_data = system_data
-    obj.tags.add(SYSTEM_TAG, category=SYSTEM_TAG_CATEGORY)
-    obj.tags.add(str(name), category=f"{SYSTEM_TAG_CATEGORY}:name")
-
+    write_system_data(obj, system_data)
     return obj
 
 

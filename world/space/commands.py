@@ -14,41 +14,12 @@ from .formatter import (
     format_system_summary,
 )
 from .importer import import_system_json
-from .models import find_body, find_system_object, list_system_objects
+from .models import find_body, find_system_object, list_system_objects, read_system_data
 
 
 def get_system_data(system_obj: Any) -> Dict[str, Any]:
-    """
-    Return stored system data from either a raw dict or an Evennia system object.
-    """
-    if not system_obj:
-        return {}
-
-    if isinstance(system_obj, dict):
-        return system_obj
-
-    try:
-        data = system_obj.system_data
-        if isinstance(data, dict):
-            return data
-    except Exception:
-        pass
-
-    try:
-        data = system_obj.db.system_data
-        if isinstance(data, dict):
-            return data
-    except Exception:
-        pass
-
-    try:
-        data = system_obj.attributes.get("system_data")
-        if isinstance(data, dict):
-            return data
-    except Exception:
-        pass
-
-    return {}
+    """Return stored system data from either a raw dict or an Evennia object."""
+    return read_system_data(system_obj)
 
 def get_system_display_name(system_obj: Any) -> str:
     """
