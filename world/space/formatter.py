@@ -1,4 +1,3 @@
-"""Text formatters for system and body displays."""
 """
 Formatting helpers for player-facing stellar system output.
 
