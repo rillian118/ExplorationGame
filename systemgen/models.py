@@ -44,7 +44,15 @@ def system_key(name: str) -> str:
 
 
 def read_system_data(obj: Any) -> Dict[str, Any]:
-    """Safely read stored system data from a raw dict or Evennia object."""
+    """
+    Safely read stored system data from a raw dict or an Evennia object.
+
+    Expected canonical storage:
+        obj.db.system_data
+
+    This helper is intentionally defensive because stale or older system objects
+    may not be SpaceSystemObject instances.
+    """
     if not obj:
         return {}
 
