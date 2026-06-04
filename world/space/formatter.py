@@ -268,3 +268,9 @@ def format_body_detail(body: Dict[str, Any]) -> str:
         lines.append(f"  Survey difficulty: {survey_difficulty}")
 
     return "\n".join(lines)
+
+def format_body_list(system: Dict[str, Any]) -> str:
+    """
+    Backward-compatible alias for older command code.
+    """
+    return format_system_bodies(system)
