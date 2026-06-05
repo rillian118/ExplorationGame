@@ -1,40 +1,17 @@
-"""CmdSet wiring for generated planetary surface commands."""
+"""CmdSet wiring for space commands."""
 
-from evennia import CmdSet
+from evennia import CmdSet  # type: ignore
 
-from .commands import (
-    CmdSurface,
-    CmdSurfaceEast,
-    CmdSurfaceNorth,
-    CmdSurfaceNortheast,
-    CmdSurfaceNorthwest,
-    CmdSurfaceSouth,
-    CmdSurfaceSoutheast,
-    CmdSurfaceSouthwest,
-    CmdSurfaceWest,
-)
+from .commands import CmdImportSystem, CmdSystem
+from .ship_commands import CmdShip
 
 
-class SurfaceCmdSet(CmdSet):
-    """Global prototype command for generated planetary surface previews."""
+class SpaceCmdSet(CmdSet):
+    """Commands for generated stellar systems and basic ship state."""
 
-    key = "SurfaceCmdSet"
+    key = "SpaceCmdSet"
 
     def at_cmdset_creation(self):
-        self.add(CmdSurface())
-
-
-class SurfaceRoomCmdSet(CmdSet):
-    """Room-local direct movement commands for generated surface rooms."""
-
-    key = "SurfaceRoomCmdSet"
-
-    def at_cmdset_creation(self):
-        self.add(CmdSurfaceNorth())
-        self.add(CmdSurfaceNortheast())
-        self.add(CmdSurfaceEast())
-        self.add(CmdSurfaceSoutheast())
-        self.add(CmdSurfaceSouth())
-        self.add(CmdSurfaceSouthwest())
-        self.add(CmdSurfaceWest())
-        self.add(CmdSurfaceNorthwest())
+        self.add(CmdSystem())
+        self.add(CmdImportSystem())
+        self.add(CmdShip())
