@@ -5,8 +5,8 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, Optional, Tuple
 
-from evennia import Command
-from evennia.utils import delay
+from evennia import Command # type: ignore
+from evennia.utils import delay # type: ignore
 
 from world.space.models import find_body, find_system_object, read_system_data
 
@@ -19,23 +19,39 @@ BODY_QUERY_HELP = "Use '<system>/<body>' or '<system> <body>'. Example: Astalon/
 
 
 def _split_system_body(text: str) -> Tuple[str, str, str]:
-    """Return system name, body query, and remaining args from a command tail."""
+    """
+    Return system name, body query, and remaining coordinate args.
+
+    Supports:
+      Astalon/Astalon I 10 25
+      Astalon Astalon I 10 25
+      Astalon/planet-1 10 25
+      Astalon planet-1 10 25
+
+    This parser splits coordinates from the right, so body names may contain
+    spaces.
+    """
     text = (text or "").strip()
     if not text:
         return "", "", ""
 
-    if "/" in text:
-        left, _, rest = text.partition(" ")
-        system_name, _, body_query = left.partition("/")
-        return system_name.strip(), body_query.strip(), rest.strip()
-
-    parts = text.split()
-    if len(parts) < 3:
+    try:
+        target_text, x_text, y_text = text.rsplit(None, 2)
+    except ValueError:
         return "", "", ""
 
-    # This form assumes a one-word system and a one-word body id/name token.
-    # Multi-word body names should use System/Body syntax.
-    return parts[0].strip(), parts[1].strip(), " ".join(parts[2:]).strip()
+    coord_text = f"{x_text} {y_text}"
+
+    if "/" in target_text:
+        system_name, _, body_query = target_text.partition("/")
+        return system_name.strip(), body_query.strip(), coord_text
+
+    parts = target_text.split(None, 1)
+    if len(parts) < 2:
+        return "", "", ""
+
+    system_name, body_query = parts
+    return system_name.strip(), body_query.strip(), coord_text
 
 
 def _resolve_body(system_name: str, body_query: str) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], str]:
