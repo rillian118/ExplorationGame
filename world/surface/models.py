@@ -148,9 +148,9 @@ def anchor_surface_room(room: Any, reason: str) -> None:
 
 
 def read_surface_view(room: Any) -> Dict[str, Any]:
-    """Read stored generated room view data."""
+    """Read stored generated room view data and add dynamic surface overlays."""
     try:
-        view = dict(room.attributes.get("surface_view") or {})
+        view = _as_dict(room.attributes.get("surface_view"))
     except Exception:
         return {}
 
