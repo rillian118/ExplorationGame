@@ -45,6 +45,10 @@ def format_surface_view(view: Dict[str, Any]) -> str:
     directions = view.get("directions", {}) or {}
     title = view.get("title") or sample.get("terrain_label") or "Generated Surface"
     description = view.get("description") or "No surface description is available."
+    ship_lines = _format_landed_ship_notices(view)
+    if ship_lines:
+        lines.append("")
+        lines.extend(ship_lines)
 
     exits: List[str] = []
     blocked: List[str] = []
@@ -90,3 +94,13 @@ def format_surface_sample(sample: Dict[str, Any]) -> str:
             f"Radiation: {sample.get('radiation', 'unknown')}",
         ]
     )
+
+
+def _format_landed_ship_notices(view: Dict[str, Any]) -> List[str]:
+    ship_names = view.get("landed_ship_names") or []
+    lines: List[str] = []
+
+    for name in ship_names:
+        lines.append(f"A ship, {name}, rests nearby on its landing struts.")
+
+    return lines

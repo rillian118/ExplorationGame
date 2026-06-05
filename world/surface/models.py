@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Dict, Optional
 
-from evennia import create_object, search_tag
+from evennia import create_object, search_tag # type: ignore
 
 from .generator import SurfaceRoomView, compose_surface_room
 
@@ -150,6 +150,33 @@ def anchor_surface_room(room: Any, reason: str) -> None:
 def read_surface_view(room: Any) -> Dict[str, Any]:
     """Read stored generated room view data."""
     try:
-        return _as_dict(room.attributes.get("surface_view"))
+        view = dict(room.attributes.get("surface_view") or {})
     except Exception:
         return {}
+
+    try:
+        dbrefs = room.attributes.get("landed_ship_dbrefs") or []
+    except Exception:
+        dbrefs = []
+
+    ship_names = []
+
+    if dbrefs:
+        try:
+            from world.space.shipstate import find_ship
+        except Exception:
+            find_ship = None
+
+        if find_ship:
+            for dbref in dbrefs:
+                ship = find_ship(str(dbref))
+                if ship is not None:
+                    try:
+                        ship_names.append(
+                            str(ship.attributes.get("ship_name") or ship.key)
+                        )
+                    except Exception:
+                        ship_names.append(str(ship))
+
+    view["landed_ship_names"] = ship_names
+    return view
