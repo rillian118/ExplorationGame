@@ -4,6 +4,8 @@ from evennia import CmdSet  # type: ignore
 
 from .commands import CmdImportSystem, CmdSystem
 from .ship_commands import CmdShip
+from world.surface.commands import CmdSurface
+
 
 
 class SpaceCmdSet(CmdSet):
