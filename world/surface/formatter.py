@@ -37,42 +37,40 @@ def _exit_label(direction: str) -> str:
 
 
 def format_surface_view(view: Dict[str, Any]) -> str:
-    """Format a stored/generated surface view for display."""
+    """
+    Format a generated surface room view for display.
+    """
     if not view:
-        return "No surface data is available for this location."
+        return "There is no generated surface data for this location."
 
-    sample = view.get("sample", {}) or {}
-    directions = view.get("directions", {}) or {}
-    title = view.get("title") or sample.get("terrain_label") or "Generated Surface"
-    description = view.get("description") or "No surface description is available."
-    ship_lines = _format_landed_ship_notices(view)
-    if ship_lines:
+    title = view.get("title", "Unsurveyed Surface")
+    description = view.get("description", "The terrain here has not been described.")
+    exits = view.get("exits", []) or []
+    blocked = view.get("blocked_exits", {}) or {}
+    landed_ship_names = view.get("landed_ship_names", []) or []
+
+    lines: List[str] = [
+        f"|w{title}|n",
+        description,
+    ]
+
+    if landed_ship_names:
         lines.append("")
-        lines.extend(ship_lines)
-
-    exits: List[str] = []
-    blocked: List[str] = []
-
-    for direction in _ORDER:
-        profile = directions.get(direction) or {}
-        if profile.get("allowed"):
-            exits.append(_exit_label(direction))
-        else:
-            reason = profile.get("blocked_reason")
-            if reason:
-                blocked.append(f"- {_direction_label(direction)}: {reason}")
-
-    lines = [f"|w{title}|n", description]
+        for ship_name in landed_ship_names:
+            lines.append(f"A ship, {ship_name}, rests nearby on its landing struts.")
 
     if exits:
-        lines.append(f"Exits: {', '.join(exits)}")
+        lines.append("")
+        lines.append("Exits: " + ", ".join(exits))
     else:
+        lines.append("")
         lines.append("Exits: none")
 
     if blocked:
         lines.append("")
         lines.append("Obstructions:")
-        lines.extend(blocked)
+        for direction, reason in blocked.items():
+            lines.append(f"- {direction}: {reason}")
 
     return "\n".join(lines)
 
