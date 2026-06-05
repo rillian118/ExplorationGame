@@ -17,3 +17,4 @@ class SpaceCmdSet(CmdSet):
         self.add(CmdSystem())
         self.add(CmdImportSystem())
         self.add(CmdShip())
+        self.add(CmdSurface())
