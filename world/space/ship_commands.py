@@ -336,8 +336,8 @@ class CmdShip(Command):
 
             _mark_ship_on_surface_room(room, ship)
             set_current_ship_for_caller(self.caller, ship)
+            self.caller.msg(f"You disembark from {ship.key} onto the surface.")
             self.caller.move_to(room, quiet=False)
-            self.caller.msg(f"You disembark from {_ship_display_name(ship)} onto the surface.")
             return
 
         if subcmd == "embark":
