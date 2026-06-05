@@ -2,14 +2,38 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, List
 
 
-_ORDER = ["north", "east", "south", "west"]
+_ORDER = [
+    "north",
+    "northeast",
+    "east",
+    "southeast",
+    "south",
+    "southwest",
+    "west",
+    "northwest",
+]
+
+_ABBREVIATIONS = {
+    "north": "n",
+    "northeast": "ne",
+    "east": "e",
+    "southeast": "se",
+    "south": "s",
+    "southwest": "sw",
+    "west": "w",
+    "northwest": "nw",
+}
 
 
 def _direction_label(direction: str) -> str:
     return direction.capitalize()
+
+
+def _exit_label(direction: str) -> str:
+    return _ABBREVIATIONS.get(direction, direction)
 
 
 def format_surface_view(view: Dict[str, Any]) -> str:
@@ -28,7 +52,7 @@ def format_surface_view(view: Dict[str, Any]) -> str:
     for direction in _ORDER:
         profile = directions.get(direction) or {}
         if profile.get("allowed"):
-            exits.append(direction)
+            exits.append(_exit_label(direction))
         else:
             reason = profile.get("blocked_reason")
             if reason:

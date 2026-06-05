@@ -1,7 +1,7 @@
 """Deterministic planetary surface generation for Exploration MUD v0.3.
 
-This module does not create Evennia rooms. It only samples terrain, movement
-costs, blocked directions, and room text from stable inputs.
+This module does not create Evennia rooms. It only samples terrain,
+movement costs, blocked directions, and room text from stable inputs.
 """
 
 from __future__ import annotations
@@ -14,22 +14,35 @@ from typing import Any, Dict, List, Optional, Tuple
 
 DIRECTIONS: Dict[str, Tuple[int, int]] = {
     "north": (0, 1),
+    "northeast": (1, 1),
     "east": (1, 0),
+    "southeast": (1, -1),
     "south": (0, -1),
+    "southwest": (-1, -1),
     "west": (-1, 0),
+    "northwest": (-1, 1),
 }
 
 ALIASES = {
     "n": "north",
+    "ne": "northeast",
     "e": "east",
+    "se": "southeast",
     "s": "south",
+    "sw": "southwest",
     "w": "west",
+    "nw": "northwest",
     "north": "north",
+    "northeast": "northeast",
     "east": "east",
+    "southeast": "southeast",
     "south": "south",
+    "southwest": "southwest",
     "west": "west",
+    "northwest": "northwest",
 }
 
+DIAGONAL_DIRECTIONS = {"northeast", "southeast", "southwest", "northwest"}
 MAX_MOVE_DELAY = 2.0
 
 
@@ -57,7 +70,7 @@ class SurfaceSample:
 
 @dataclass
 class DirectionProfile:
-    """Movement/passability information for one cardinal direction."""
+    """Movement/passability information for one surface direction."""
 
     direction: str
     target_x: int
@@ -86,12 +99,14 @@ class SurfaceRoomView:
             "sample": self.sample.to_dict(),
             "title": self.title,
             "description": self.description,
-            "directions": {key: value.to_dict() for key, value in self.directions.items()},
+            "directions": {
+                key: value.to_dict() for key, value in self.directions.items()
+            },
         }
 
 
 def normalize_direction(direction: str) -> Optional[str]:
-    """Normalize n/e/s/w aliases to full direction names."""
+    """Normalize directional aliases to full direction names."""
     return ALIASES.get((direction or "").strip().lower())
 
 
@@ -106,11 +121,7 @@ def _unit_noise(*parts: Any) -> float:
 
 
 def _smooth_value(seed: int, body_id: str, x: int, y: int, scale: int, salt: str) -> float:
-    """Very small deterministic value-noise helper.
-
-    This intentionally avoids external dependencies. It is not intended to be
-    geologically perfect; it gives stable room-scale variation cheaply.
-    """
+    """Small deterministic value-noise helper with no external dependencies."""
     gx = math.floor(x / scale)
     gy = math.floor(y / scale)
     fx = (x / scale) - gx
@@ -124,9 +135,9 @@ def _smooth_value(seed: int, body_id: str, x: int, y: int, scale: int, salt: str
     v01 = n(gx, gy + 1)
     v11 = n(gx + 1, gy + 1)
 
-    # smoothstep interpolation
     sx = fx * fx * (3 - 2 * fx)
     sy = fy * fy * (3 - 2 * fy)
+
     ix0 = v00 * (1 - sx) + v10 * sx
     ix1 = v01 * (1 - sx) + v11 * sx
     return ix0 * (1 - sy) + ix1 * sy
@@ -145,13 +156,16 @@ def _body_gravity_g(body: Dict[str, Any]) -> float:
     radius = body.get("radius_km")
     if not mass or not radius:
         return 1.0
+
     try:
         return max(0.02, float(mass) / ((float(radius) / 6371.0) ** 2))
     except Exception:
         return 1.0
 
 
-def _terrain_from_values(body: Dict[str, Any], elevation_n: float, roughness: float, temp_k: float) -> Tuple[str, str, List[str]]:
+def _terrain_from_values(
+    body: Dict[str, Any], elevation_n: float, roughness: float, temp_k: float
+) -> Tuple[str, str, List[str]]:
     classification = str(body.get("classification", "")).lower()
     kind = str(body.get("kind", "")).lower()
     tags: List[str] = []
@@ -208,9 +222,9 @@ def sample_surface(system_data: Dict[str, Any], body: Dict[str, Any], x: int, y:
     elevation_m = int((elevation_n - 0.40) * 6200)
     temp_variation = (_unit_noise(seed, body_id, x, y, "temp") - 0.5) * 34.0
     temperature_k = max(1.0, base_temp + temp_variation - max(elevation_m, 0) * 0.0025)
+
     gravity_g = _body_gravity_g(body)
     radiation = round(max(0.0, radiation_n * 1.25), 3)
-
     terrain, label, tags = _terrain_from_values(body, elevation_n, roughness, temperature_k)
 
     return SurfaceSample(
@@ -259,7 +273,9 @@ def _movement_message(direction: str, current: SurfaceSample, neighbor: SurfaceS
     return f"You travel {direction}."
 
 
-def evaluate_direction(system_data: Dict[str, Any], body: Dict[str, Any], x: int, y: int, direction: str) -> DirectionProfile:
+def evaluate_direction(
+    system_data: Dict[str, Any], body: Dict[str, Any], x: int, y: int, direction: str
+) -> DirectionProfile:
     """Evaluate movement from one coordinate to an adjacent coordinate."""
     dx, dy = DIRECTIONS[direction]
     current = sample_surface(system_data, body, x, y)
@@ -283,12 +299,23 @@ def evaluate_direction(system_data: Dict[str, Any], body: Dict[str, Any], x: int
     gravity_penalty = max(0.0, current.gravity_g - 1.0) * 0.35
     low_g_penalty = max(0.0, 0.35 - current.gravity_g) * 0.60
     terrain_penalty = 0.0
+
     if neighbor.terrain in {"highlands", "crater_field", "mountains"}:
         terrain_penalty += 0.45
     if neighbor.terrain in {"ice_field", "ice_plain"}:
         terrain_penalty += 0.25
 
-    delay = 0.25 + roughness * 0.80 + slope_factor * 0.85 + gravity_penalty + low_g_penalty + terrain_penalty
+    diagonal_penalty = 0.20 if direction in DIAGONAL_DIRECTIONS else 0.0
+
+    delay = (
+        0.25
+        + roughness * 0.80
+        + slope_factor * 0.85
+        + gravity_penalty
+        + low_g_penalty
+        + terrain_penalty
+        + diagonal_penalty
+    )
     delay = round(max(0.0, min(MAX_MOVE_DELAY, delay)), 1)
     severity = "easy" if delay < 0.7 else "normal" if delay < 1.3 else "rough"
 
@@ -312,7 +339,6 @@ def compose_surface_room(system_data: Dict[str, Any], body: Dict[str, Any], x: i
     }
 
     title = f"{sample.terrain_label} on {sample.body_name}"
-
     temp_c = sample.temperature_k - 273.15
     desc_parts = [
         f"The terrain here is {sample.terrain_label.lower()}, with an elevation near {sample.elevation_m:,} meters.",

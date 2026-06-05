@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, Dict, Optional
 
 from evennia import create_object, search_tag
@@ -13,6 +14,7 @@ SURFACE_TAG = "generated_surface_room"
 SURFACE_TAG_CATEGORY = "surface"
 SURFACE_ADDRESS_CATEGORY = "surface:address"
 ROOM_TYPECLASS = "typeclasses.rooms.Room"
+SURFACE_ROOM_CMDSET = "world.surface.cmdsets.SurfaceRoomCmdSet"
 
 
 def surface_address_key(system_name: str, body_id: str, x: int, y: int) -> str:
@@ -20,13 +22,19 @@ def surface_address_key(system_name: str, body_id: str, x: int, y: int) -> str:
     return f"{system_name.lower()}::{body_id.lower()}::{int(x)}::{int(y)}"
 
 
+def _as_dict(value: Any) -> Dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    return {}
+
+
 def get_surface_address(room: Any) -> Dict[str, Any]:
     """Return surface address data from a room, or an empty dict."""
     if room is None:
         return {}
+
     try:
-        data = room.attributes.get("surface_address")
-        return dict(data or {})
+        return _as_dict(room.attributes.get("surface_address"))
     except Exception:
         return {}
 
@@ -43,10 +51,31 @@ def find_surface_room(system_name: str, body_id: str, x: int, y: int) -> Optiona
     return matches[0] if matches else None
 
 
-def _write_room_data(room: Any, system_data: Dict[str, Any], body: Dict[str, Any], x: int, y: int, view: SurfaceRoomView) -> None:
+def _ensure_surface_room_cmdset(room: Any) -> None:
+    """Attach room-local direct movement commands to a generated surface room."""
+    try:
+        room.cmdset.add(SURFACE_ROOM_CMDSET, persistent=True)
+    except TypeError:
+        room.cmdset.add(SURFACE_ROOM_CMDSET, permanent=True)
+    except Exception:
+        # The surface command remains usable via 'surface move <direction>' even
+        # if room-local cmdset attachment fails.
+        pass
+
+
+def _write_room_data(
+    room: Any,
+    system_data: Dict[str, Any],
+    body: Dict[str, Any],
+    x: int,
+    y: int,
+    view: SurfaceRoomView,
+) -> None:
     """Write generated surface metadata onto a materialized room."""
     sample = view.sample
     room.db.desc = view.description
+    room.key = view.title
+
     room.attributes.add(
         "surface_address",
         {
@@ -72,6 +101,7 @@ def _write_room_data(room: Any, system_data: Dict[str, Any], body: Dict[str, Any
         surface_address_key(str(system_data.get("name")), str(body.get("id")), x, y),
         category=SURFACE_ADDRESS_CATEGORY,
     )
+    _ensure_surface_room_cmdset(room)
 
 
 def get_or_create_surface_room(system_data: Dict[str, Any], body: Dict[str, Any], x: int, y: int) -> Any:
@@ -108,6 +138,6 @@ def anchor_surface_room(room: Any, reason: str) -> None:
 def read_surface_view(room: Any) -> Dict[str, Any]:
     """Read stored generated room view data."""
     try:
-        return dict(room.attributes.get("surface_view") or {})
+        return _as_dict(room.attributes.get("surface_view"))
     except Exception:
         return {}
