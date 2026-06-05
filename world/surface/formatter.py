@@ -37,19 +37,30 @@ def _exit_label(direction: str) -> str:
 
 
 def format_surface_view(view: Dict[str, Any]) -> str:
-    """
-    Format a generated surface room view for display.
-    """
+    """Format a stored/generated surface view for display."""
     if not view:
-        return "There is no generated surface data for this location."
+        return "No surface data is available for this location."
 
-    title = view.get("title", "Unsurveyed Surface")
-    description = view.get("description", "The terrain here has not been described.")
-    exits = view.get("exits", []) or []
-    blocked = view.get("blocked_exits", {}) or {}
+    sample = view.get("sample", {}) or {}
+    directions = view.get("directions", {}) or {}
+    title = view.get("title") or sample.get("terrain_label") or "Generated Surface"
+    description = view.get("description") or "No surface description is available."
     landed_ship_names = view.get("landed_ship_names", []) or []
 
-    lines: List[str] = [
+    exits: List[str] = []
+    blocked: List[str] = []
+
+    for direction in _ORDER:
+        profile = directions.get(direction) or {}
+
+        if profile.get("allowed"):
+            exits.append(_exit_label(direction))
+        else:
+            reason = profile.get("blocked_reason")
+            if reason:
+                blocked.append(f"- {_direction_label(direction)}: {reason}")
+
+    lines = [
         f"|w{title}|n",
         description,
     ]
@@ -61,7 +72,7 @@ def format_surface_view(view: Dict[str, Any]) -> str:
 
     if exits:
         lines.append("")
-        lines.append("Exits: " + ", ".join(exits))
+        lines.append(f"Exits: {', '.join(exits)}")
     else:
         lines.append("")
         lines.append("Exits: none")
@@ -69,29 +80,9 @@ def format_surface_view(view: Dict[str, Any]) -> str:
     if blocked:
         lines.append("")
         lines.append("Obstructions:")
-        for direction, reason in blocked.items():
-            lines.append(f"- {direction}: {reason}")
+        lines.extend(blocked)
 
     return "\n".join(lines)
-
-
-def format_surface_sample(sample: Dict[str, Any]) -> str:
-    """Format raw environmental readings for debugging/admin preview."""
-    if not sample:
-        return "No surface sample available."
-
-    return "\n".join(
-        [
-            f"Body: {sample.get('body_name', 'unknown')}",
-            f"Coordinate: {sample.get('x')}, {sample.get('y')}",
-            f"Terrain: {sample.get('terrain_label', 'unknown')}",
-            f"Elevation: {sample.get('elevation_m', 'unknown')} m",
-            f"Roughness: {sample.get('roughness', 'unknown')}",
-            f"Gravity: {sample.get('gravity_g', 'unknown')}g",
-            f"Temperature: {sample.get('temperature_k', 'unknown')} K",
-            f"Radiation: {sample.get('radiation', 'unknown')}",
-        ]
-    )
 
 
 def _format_landed_ship_notices(view: Dict[str, Any]) -> List[str]:
