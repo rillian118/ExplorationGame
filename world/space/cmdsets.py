@@ -1,18 +1,13 @@
-"""Space and exploration command sets."""
+"""CmdSet wiring for space commands."""
 
-from evennia import CmdSet
+from evennia import CmdSet  # type: ignore
 
 from .commands import CmdImportSystem, CmdSystem
 from .ship_commands import CmdShip
-from world.surface.commands import CmdSurface
 
 
 class SpaceCmdSet(CmdSet):
-    """
-    Exploration command set.
-
-    Added to the default character cmdset from commands/default_cmdsets.py.
-    """
+    """Commands for generated stellar systems and basic ship state."""
 
     key = "SpaceCmdSet"
 
@@ -20,4 +15,3 @@ class SpaceCmdSet(CmdSet):
         self.add(CmdSystem())
         self.add(CmdImportSystem())
         self.add(CmdShip())
-        self.add(CmdSurface())

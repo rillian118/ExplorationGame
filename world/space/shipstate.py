@@ -1,14 +1,14 @@
 """Ship objects and location-state helpers for space gameplay.
 
-This is the first bridge between generated stellar systems and movable ships.
-Ships are stored as hidden Evennia objects with a lightweight JSON-compatible
-location state on Attributes.
+Ships are stored as persistent Evennia objects. Their location state is a small
+JSON-compatible Attribute describing where the ship is in the generated space
+model: in-system, orbiting, landed, docked, or in transit.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 
 from evennia import DefaultObject, create_object, search_object, search_tag  # type: ignore
 
@@ -27,6 +27,14 @@ VALID_LOCATION_MODES = {
     "landed",
     "docked",
     "in_transit",
+}
+
+
+UNLANDABLE_CLASSIFICATION_TERMS = {
+    "gas giant",
+    "sub-neptune",
+    "sub neptune",
+    "ice giant",
 }
 
 
@@ -80,6 +88,12 @@ class SpaceShipObject(DefaultObject):
         write_ship_location(self, value)
 
 
+def _as_dict(value: Any) -> Dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    return {}
+
+
 def read_ship_location(ship: Any) -> Dict[str, Any]:
     """Read a ship location state from an Evennia object or raw mapping."""
     if ship is None:
@@ -91,23 +105,18 @@ def read_ship_location(ship: Any) -> Dict[str, Any]:
         merged.update(state)
         return merged
 
-    try:
-        state = ship.attributes.get("location_state")
-        if isinstance(state, Mapping):
-            merged = default_location_state()
-            merged.update(dict(state))
-            return merged
-    except Exception:
-        pass
-
-    try:
-        state = ship.db.location_state
-        if isinstance(state, Mapping):
-            merged = default_location_state()
-            merged.update(dict(state))
-            return merged
-    except Exception:
-        pass
+    for reader in (
+        lambda obj: obj.attributes.get("location_state"),
+        lambda obj: obj.db.location_state,
+    ):
+        try:
+            state = reader(ship)
+            if isinstance(state, Mapping):
+                merged = default_location_state()
+                merged.update(dict(state))
+                return merged
+        except Exception:
+            pass
 
     return default_location_state()
 
@@ -141,32 +150,35 @@ def find_ship(query: str) -> Optional[Any]:
     if not query:
         return None
 
-    # DBREF or exact key lookup first.
     direct = search_object(query, exact=True) or []
     for obj in direct:
-        if obj.tags.has(SHIP_TAG, category=SHIP_TAG_CATEGORY):
-            return obj
+        try:
+            if obj.tags.has(SHIP_TAG, category=SHIP_TAG_CATEGORY):
+                return obj
+        except Exception:
+            pass
 
     prefixed = search_object(ship_key(query), exact=True) or []
     for obj in prefixed:
-        if obj.tags.has(SHIP_TAG, category=SHIP_TAG_CATEGORY):
-            return obj
+        try:
+            if obj.tags.has(SHIP_TAG, category=SHIP_TAG_CATEGORY):
+                return obj
+        except Exception:
+            pass
 
     lower = query.lower()
+    desired_key = ship_key(query).lower()
     for ship in list_ship_objects():
-        names = {
-            str(getattr(ship, "key", "")).lower(),
-            str(ship_key(query)).lower(),
-            str(ship.attributes.get("ship_name") or "").lower(),
-        }
-        if lower in names or str(getattr(ship, "key", "")).lower() == ship_key(query).lower():
+        ship_name = str(ship.attributes.get("ship_name") or "").lower()
+        obj_key = str(getattr(ship, "key", "")).lower()
+        if lower in {ship_name, obj_key} or obj_key == desired_key:
             return ship
 
     return None
 
 
 def create_ship(name: str, owner: Any = None) -> Any:
-    """Create a persistent ship object."""
+    """Create a persistent ship object, or return the existing one."""
     clean_name = (name or "").strip()
     if not clean_name:
         raise ValueError("Ship name is required.")
@@ -188,6 +200,33 @@ def create_ship(name: str, owner: Any = None) -> Any:
         ship.attributes.add("owner", getattr(owner, "id", None))
 
     return ship
+
+
+def _resolve_system_and_body(system_name: str, body_query: str) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    system_obj = find_system_object(system_name)
+    if system_obj is None:
+        raise ValueError(f"No imported system named '{system_name}' was found.")
+
+    system_data = read_system_data(system_obj)
+    if not system_data:
+        raise ValueError(f"System '{system_name}' has no stored system data.")
+
+    body = find_body(system_data, body_query)
+    if body is None:
+        raise ValueError(f"No body named '{body_query}' was found in {system_data.get('name')}.")
+
+    return system_data, body
+
+
+def is_body_physically_landable(body: Dict[str, Any]) -> bool:
+    """Return whether this body can be used for prototype surface landing."""
+    kind = str(body.get("kind", "")).lower()
+    classification = str(body.get("classification", "")).lower()
+
+    if kind not in {"planet", "moon"}:
+        return False
+
+    return not any(term in classification for term in UNLANDABLE_CLASSIFICATION_TERMS)
 
 
 def set_ship_in_system(ship: Any, system_name: str) -> Dict[str, Any]:
@@ -214,17 +253,7 @@ def set_ship_in_system(ship: Any, system_name: str) -> Dict[str, Any]:
 
 def set_ship_orbiting(ship: Any, system_name: str, body_query: str) -> Dict[str, Any]:
     """Set a ship to orbit a body in a generated system."""
-    system_obj = find_system_object(system_name)
-    if system_obj is None:
-        raise ValueError(f"No imported system named '{system_name}' was found.")
-
-    system_data = read_system_data(system_obj)
-    if not system_data:
-        raise ValueError(f"System '{system_name}' has no stored system data.")
-
-    body = find_body(system_data, body_query)
-    if body is None:
-        raise ValueError(f"No body named '{body_query}' was found in {system_data.get('name')}.")
+    system_data, body = _resolve_system_and_body(system_name, body_query)
 
     state = default_location_state()
     state.update(
@@ -234,6 +263,28 @@ def set_ship_orbiting(ship: Any, system_name: str, body_query: str) -> Dict[str,
             "body_id": body.get("id"),
             "body_name": body.get("name"),
             "notes": [f"Ship is in stable orbit around {body.get('name')}."]
+        }
+    )
+    write_ship_location(ship, state)
+    return state
+
+
+def set_ship_landed(ship: Any, system_name: str, body_query: str, x: int, y: int) -> Dict[str, Any]:
+    """Set a ship to a landed prototype state at a generated surface coordinate."""
+    system_data, body = _resolve_system_and_body(system_name, body_query)
+
+    if not is_body_physically_landable(body):
+        raise ValueError(f"{body.get('name', body_query)} is not landable by the prototype surface system.")
+
+    state = default_location_state()
+    state.update(
+        {
+            "mode": "landed",
+            "system": system_data.get("name"),
+            "body_id": body.get("id"),
+            "body_name": body.get("name"),
+            "coordinates": {"x": int(x), "y": int(y)},
+            "notes": [f"Ship is landed on {body.get('name')} at surface coordinates {int(x)}, {int(y)}."],
         }
     )
     write_ship_location(ship, state)
@@ -304,8 +355,9 @@ def format_ship_status(ship: Any) -> str:
     elif state.get("body_id"):
         lines.append(f"Body ID: {state.get('body_id')}")
 
-    if state.get("coordinates"):
-        lines.append(f"Coordinates: {state.get('coordinates')}")
+    coordinates = _as_dict(state.get("coordinates"))
+    if coordinates:
+        lines.append(f"Surface coordinates: {coordinates.get('x')}, {coordinates.get('y')}")
 
     if state.get("site_id"):
         lines.append(f"Site: {state.get('site_id')}")
