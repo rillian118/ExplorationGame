@@ -93,8 +93,6 @@ def _complete_surface_move(caller: Any, target_room: Any) -> None:
     try:
         caller.db.surface_move_pending = False
         caller.move_to(target_room, quiet=False)
-        view = read_surface_view(target_room)
-        caller.msg(format_surface_view(view))
     except Exception as err:
         try:
             caller.msg(f"Surface movement failed: {err}")
@@ -231,7 +229,6 @@ class CmdSurface(Command):
 
             room = get_or_create_surface_room(system_data, body, x, y)
             self.caller.move_to(room, quiet=False)
-            self.caller.msg(format_surface_view(read_surface_view(room)))
             return
 
         if subcmd in {"look", "l"}:

@@ -9,13 +9,29 @@ from evennia import create_object, search_tag # type: ignore
 
 from .generator import SurfaceRoomView, compose_surface_room
 
+from typeclasses.rooms import Room as BaseRoom
 
 SURFACE_TAG = "generated_surface_room"
 SURFACE_TAG_CATEGORY = "surface"
 SURFACE_ADDRESS_CATEGORY = "surface:address"
-ROOM_TYPECLASS = "typeclasses.rooms.Room"
+ROOM_TYPECLASS = "world.surface.models.GeneratedSurfaceRoom"
 SURFACE_ROOM_CMDSET = "world.surface.cmdsets.SurfaceRoomCmdSet"
 
+class GeneratedSurfaceRoom(BaseRoom):
+    """
+    Typeclass for materialized procedural surface rooms.
+
+    This makes normal Evennia room display use the generated surface formatter,
+    so movement, look, and disembarkation all show the same surface view.
+    """
+
+    def return_appearance(self, looker, **kwargs):
+        view = read_surface_view(self)
+        if view:
+            from .formatter import format_surface_view
+            return format_surface_view(view)
+
+        return super().return_appearance(looker, **kwargs)
 
 def surface_address_key(system_name: str, body_id: str, x: int, y: int) -> str:
     """Return a stable tag key for a generated surface coordinate."""
@@ -55,8 +71,7 @@ def _ensure_surface_room_cmdset(room: Any) -> None:
     """
     Attach room-local direct movement commands to a generated surface room.
 
-    Avoid stacking duplicate SurfaceRoomCmdSet instances. Duplicate room cmdsets
-    cause Evennia to report multiple matches for commands like 'n' and 'ne'.
+    Avoid stacking duplicate SurfaceRoomCmdSet instances.
     """
     try:
         for cmdset in room.cmdset.get():
@@ -70,8 +85,6 @@ def _ensure_surface_room_cmdset(room: Any) -> None:
     except TypeError:
         room.cmdset.add(SURFACE_ROOM_CMDSET, permanent=True)
     except Exception:
-        # The surface command remains usable via 'surface move <direction>' even
-        # if room-local cmdset attachment fails.
         pass
 
 
