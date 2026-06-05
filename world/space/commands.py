@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict
 
-from evennia import Command # type: ignore
+from evennia import Command  # type: ignore
 
 from .formatter import (
     format_body_detail,
@@ -15,6 +15,7 @@ from .formatter import (
 )
 from .importer import import_system_json
 from .models import find_body, find_system_object, list_system_objects, read_system_data
+from .shipstate import get_current_system_name_for_caller
 
 
 def get_system_data(system_obj: Any) -> Dict[str, Any]:
@@ -58,9 +59,10 @@ class CmdSystem(Command):
       system bodies [system name]
       system body <body name or id> [in <system name>]
 
-    The command first looks for caller.db.current_system, then for a system name
-    supplied in the command. If only one system has been imported, it uses that
-    system by default.
+    Default system resolution:
+      1. current ship location, if the caller has selected/boarded a ship
+      2. caller.db.current_system, if set and valid
+      3. the only imported system, if exactly one exists
     """
 
     key = "system"
@@ -69,23 +71,20 @@ class CmdSystem(Command):
     help_category = "Space"
 
     def _default_system(self):
-        """
-        Resolve the default system.
+        """Resolve the default system for this caller."""
+        ship_system = get_current_system_name_for_caller(self.caller)
+        if ship_system:
+            found = find_system_object(str(ship_system))
+            if found is not None:
+                return found
 
-        Priority:
-          1. caller.db.current_system, if set and valid
-          2. the only imported system, if exactly one exists
-          3. None
-        """
         current_name = self.caller.db.current_system
-
         if current_name:
             found = find_system_object(str(current_name))
             if found is not None:
                 return found
 
         systems = list_system_objects()
-
         if len(systems) == 1:
             return systems[0]
 
@@ -118,9 +117,7 @@ class CmdSystem(Command):
             system_obj = self._system_from_name_or_default(rest)
 
             if system_obj is None:
-                self.caller.msg(
-                    "No system selected. Use 'system list' or 'system scan <name>'."
-                )
+                self.caller.msg("No system selected. Use 'system list' or 'system scan <name>'.")
                 return
 
             system_data = get_system_data(system_obj)
@@ -139,9 +136,7 @@ class CmdSystem(Command):
             system_obj = self._system_from_name_or_default(rest)
 
             if system_obj is None:
-                self.caller.msg(
-                    "No system selected. Use 'system list' or 'system bodies <name>'."
-                )
+                self.caller.msg("No system selected. Use 'system list' or 'system bodies <name>'.")
                 return
 
             system_data = get_system_data(system_obj)

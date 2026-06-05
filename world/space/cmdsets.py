@@ -1,17 +1,17 @@
 """CmdSet wiring for space commands."""
 
-from evennia import CmdSet
+from evennia import CmdSet  # type: ignore
 
 from .commands import CmdImportSystem, CmdSystem
-from world.surface.commands import CmdSurface
+from .ship_commands import CmdShip
 
 
 class SpaceCmdSet(CmdSet):
-    """Commands for inspecting/importing systems and testing generated surfaces."""
+    """Commands for generated stellar systems and basic ship state."""
 
     key = "SpaceCmdSet"
 
     def at_cmdset_creation(self):
         self.add(CmdSystem())
         self.add(CmdImportSystem())
-        self.add(CmdSurface())
+        self.add(CmdShip())
