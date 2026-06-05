@@ -52,7 +52,19 @@ def find_surface_room(system_name: str, body_id: str, x: int, y: int) -> Optiona
 
 
 def _ensure_surface_room_cmdset(room: Any) -> None:
-    """Attach room-local direct movement commands to a generated surface room."""
+    """
+    Attach room-local direct movement commands to a generated surface room.
+
+    Avoid stacking duplicate SurfaceRoomCmdSet instances. Duplicate room cmdsets
+    cause Evennia to report multiple matches for commands like 'n' and 'ne'.
+    """
+    try:
+        for cmdset in room.cmdset.get():
+            if getattr(cmdset, "key", None) == "SurfaceRoomCmdSet":
+                return
+    except Exception:
+        pass
+
     try:
         room.cmdset.add(SURFACE_ROOM_CMDSET, persistent=True)
     except TypeError:
