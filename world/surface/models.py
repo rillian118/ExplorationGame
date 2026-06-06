@@ -12,8 +12,6 @@ from .generator import SurfaceRoomView, compose_surface_room
 from typeclasses.rooms import Room as BaseRoom
 
 from django.db import models
-from evennia.objects.models import ObjectDB
-from evennia.accounts.models import AccountDB
 
 SURFACE_TAG = "generated_surface_room"
 SURFACE_TAG_CATEGORY = "surface"
@@ -23,11 +21,10 @@ SURFACE_ROOM_CMDSET = "world.surface.cmdsets.SurfaceRoomCmdSet"
 
 class SurfaceOverlay(models.Model):
     """
-    Persistent state layered onto generated planetary surface rooms.
+    Persistent overlay state for generated surface rooms.
 
-    Generated rooms may be deleted and recreated. SurfaceOverlay records should
-    survive that process and be reapplied whenever the surface tile is loaded or
-    regenerated.
+    Generated rooms are disposable/cacheable. SurfaceOverlay records are the
+    durable world-state layer that survives room regeneration and cleanup.
     """
 
     planet_key = models.CharField(max_length=128, db_index=True)
@@ -36,26 +33,9 @@ class SurfaceOverlay(models.Model):
 
     overlay_type = models.CharField(max_length=64, db_index=True)
 
-    # Optional links into Evennia's object database.
-    source_object = models.ForeignKey(
-        ObjectDB,
-        null=True,
-        blank=True,
-        related_name="surface_overlays_as_source",
-        on_delete=models.SET_NULL,
-        help_text="Object that physically/logically creates this overlay, such as a landed ship.",
-    )
-    owner_object = models.ForeignKey(
-        ObjectDB,
-        null=True,
-        blank=True,
-        related_name="surface_overlays_as_owner",
-        on_delete=models.SET_NULL,
-        help_text="Player, account-controlled character, organization object, or owner proxy.",
-    )
+    object_id = models.IntegerField(null=True, blank=True, db_index=True)
+    owner_id = models.IntegerField(null=True, blank=True, db_index=True)
 
-    name = models.CharField(max_length=160, blank=True, default="")
-    description = models.TextField(blank=True, default="")
     data = models.JSONField(default=dict, blank=True)
 
     is_permanent = models.BooleanField(default=True)
@@ -73,22 +53,8 @@ class SurfaceOverlay(models.Model):
             models.Index(fields=["owner_id"]),
         ]
 
-        ordering = ["planet_key", "x", "y", "overlay_type", "id"]
-
     def __str__(self):
-        label = self.name or self.overlay_type
-        return f"{label} @ {self.planet_key} ({self.x}, {self.y})"
-
-    def display_line(self):
-        """
-        Surface-room prose for this overlay.
-        Keep this conservative; richer rendering can move into overlays.py later.
-        """
-        if self.description:
-            return self.description.strip()
-        if self.name:
-            return self.name.strip()
-        return ""
+        return f"{self.overlay_type} overlay on {self.planet_key} ({self.x}, {self.y})"
 
 class GeneratedSurfaceRoom(BaseRoom):
     """
