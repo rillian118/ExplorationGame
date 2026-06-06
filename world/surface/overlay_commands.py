@@ -21,14 +21,20 @@ def _get_surface_context(caller):
     if not room:
         return None, None, None, None
 
-    planet_key = getattr(room.db, "planet_key", None)
-    x = getattr(room.db, "surface_x", None)
-    y = getattr(room.db, "surface_y", None)
-
-    if planet_key is None or x is None or y is None:
+    address = room.attributes.get("surface_address") or {}
+    if not isinstance(address, dict):
         return room, None, None, None
 
-    return room, str(planet_key), int(x), int(y)
+    system_name = address.get("system_name")
+    body_id = address.get("body_id")
+    x = address.get("x")
+    y = address.get("y")
+
+    if not system_name or not body_id or x is None or y is None:
+        return room, None, None, None
+
+    planet_key = f"{system_name}:{body_id}"
+    return room, planet_key, int(x), int(y)
 
 
 def _obj_id(obj: Any) -> int | None:
