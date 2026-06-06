@@ -64,12 +64,14 @@ class SurfaceOverlay(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        indexes = [
-            models.Index(fields=["planet_key", "x", "y"]),
-            models.Index(fields=["planet_key", "x", "y", "overlay_type"]),
-            models.Index(fields=["blocks_cleanup"]),
-            models.Index(fields=["visible_on_surface"]),
-        ]
+    app_label = "world"
+    indexes = [
+        models.Index(fields=["planet_key", "x", "y"]),
+        models.Index(fields=["planet_key", "overlay_type"]),
+        models.Index(fields=["object_id"]),
+        models.Index(fields=["owner_id"]),
+    ]
+
         ordering = ["planet_key", "x", "y", "overlay_type", "id"]
 
     def __str__(self):
@@ -86,6 +88,7 @@ class SurfaceOverlay(models.Model):
         if self.name:
             return self.name.strip()
         return ""
+
 class GeneratedSurfaceRoom(BaseRoom):
     """
     Typeclass for materialized procedural surface rooms.
