@@ -21,8 +21,12 @@ def _get_surface_context(caller):
     if not room:
         return None, None, None, None
 
-    address = room.attributes.get("surface_address") or {}
-    if not isinstance(address, dict):
+    try:
+        from world.surface.models import get_surface_address
+
+        address = get_surface_address(room) or {}
+        address = dict(address)
+    except Exception:
         return room, None, None, None
 
     system_name = address.get("system_name")
