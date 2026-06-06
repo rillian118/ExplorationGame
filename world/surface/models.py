@@ -63,7 +63,7 @@ class SurfaceOverlay(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-        class Meta:
+    class Meta:
         indexes = [
             models.Index(fields=["planet_key", "x", "y"]),
             models.Index(fields=["planet_key", "overlay_type"]),
