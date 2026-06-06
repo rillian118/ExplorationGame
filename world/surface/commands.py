@@ -1,27 +1,116 @@
-"""Player-facing surface commands.
+"""
+Player-facing commands for generated planetary surface rooms.
 
-This module intentionally keeps CmdSurface available because
-world.space.cmdsets imports it directly.
-
-Overlay/admin commands now live in world.surface.overlay_commands.
+Overlay/admin commands should live in world.surface.overlay_commands.
 """
 
 from __future__ import annotations
 
-from evennia.commands.default.muxcommand import MuxCommand
+from typing import Any
+
+from evennia import Command  # type: ignore
+
+from world.space.models import find_body, find_system_object, read_system_data
+from world.surface.generator import normalize_direction
+from world.surface.models import (
+    get_or_create_surface_room,
+    get_surface_address,
+    is_surface_room,
+)
 
 
-class CmdSurface(MuxCommand):
+def _as_dict(value: Any) -> dict[str, Any]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _get_current_surface_context(caller):
     """
-    Show basic information about the current generated surface tile.
+    Return room, address, system_data, body, or an error string.
+    """
+    room = caller.location
+    if not room:
+        return None, {}, {}, {}, "You are nowhere."
 
-    This is a compatibility-safe placeholder while the richer surface command
-    is rebuilt. Do not place overlay debug commands in this module; keep them in
-    world.surface.overlay_commands so imports remain stable.
+    if not is_surface_room(room):
+        return room, {}, {}, {}, "This is not a generated surface tile."
+
+    address = get_surface_address(room)
+    system_name = address.get("system_name")
+    body_id = address.get("body_id")
+
+    if not system_name or not body_id:
+        return room, address, {}, {}, "This surface tile has incomplete address data."
+
+    system_obj = find_system_object(str(system_name))
+    if system_obj is None:
+        return room, address, {}, {}, f"No imported system named '{system_name}' was found."
+
+    system_data = read_system_data(system_obj)
+    if not system_data:
+        return room, address, {}, {}, f"System '{system_name}' has no stored system data."
+
+    body = find_body(system_data, str(body_id))
+    if body is None:
+        return room, address, system_data, {}, f"No body id '{body_id}' was found in {system_name}."
+
+    return room, address, system_data, body, ""
+
+
+def move_surface(caller, raw_direction: str):
+    """
+    Move caller from one generated surface room to an adjacent surface room.
+    """
+    direction = normalize_direction(raw_direction)
+
+    if not direction:
+        caller.msg("Usage: surface move <n|ne|e|se|s|sw|w|nw>")
+        return
+
+    room, address, system_data, body, error = _get_current_surface_context(caller)
+    if error:
+        caller.msg(error)
+        return
+
+    view = _as_dict(room.attributes.get("surface_view"))
+    directions = _as_dict(view.get("directions"))
+    profile = _as_dict(directions.get(direction))
+
+    if not profile:
+        caller.msg(f"No generated movement data is available for {direction}.")
+        return
+
+    if not profile.get("allowed", True):
+        caller.msg(profile.get("blocked_reason") or f"You cannot travel {direction}.")
+        return
+
+    try:
+        target_x = int(profile.get("target_x"))
+        target_y = int(profile.get("target_y"))
+    except Exception:
+        caller.msg(f"The generated movement data for {direction} is incomplete.")
+        return
+
+    try:
+        target_room = get_or_create_surface_room(system_data, body, target_x, target_y)
+    except Exception as err:
+        caller.msg(f"Surface movement failed: {err}")
+        return
+
+    message = profile.get("message")
+    if message:
+        caller.msg(message)
+
+    caller.move_to(target_room, quiet=False)
+
+
+class CmdSurface(Command):
+    """
+    Inspect or move across a generated planetary surface.
 
     Usage:
       surface
-      surf
+      surface where
+      surface move <direction>
     """
 
     key = "surface"
@@ -31,36 +120,88 @@ class CmdSurface(MuxCommand):
 
     def func(self):
         caller = self.caller
-        room = caller.location
-        if not room:
-            caller.msg("You are nowhere.")
+        raw = self.args.strip()
+
+        if not raw or raw.lower() in ("where", "coords", "location"):
+            room, address, system_data, body, error = _get_current_surface_context(caller)
+            if error:
+                caller.msg(error)
+                return
+
+            caller.msg(
+                "Surface location: "
+                f"{address.get('system_name', 'Unknown System')} / "
+                f"{address.get('body_name') or address.get('body_id', 'Unknown Body')} "
+                f"({address.get('x')}, {address.get('y')})"
+            )
             return
 
-        planet_key = getattr(room.db, "planet_key", None)
-        x = getattr(room.db, "surface_x", None)
-        y = getattr(room.db, "surface_y", None)
-
-        if planet_key is None or x is None or y is None:
-            caller.msg("This is not a generated surface tile.")
+        parts = raw.split(None, 1)
+        if len(parts) == 2 and parts[0].lower() == "move":
+            move_surface(caller, parts[1])
             return
 
-        lines = [f"Surface tile: {planet_key} ({x}, {y})"]
+        caller.msg("Usage: surface, surface where, or surface move <direction>.")
 
-        terrain = getattr(room.db, "terrain", None) or getattr(room.db, "terrain_type", None)
-        elevation = getattr(room.db, "elevation_m", None) or getattr(room.db, "elevation", None)
-        temperature = getattr(room.db, "temperature_k", None) or getattr(room.db, "temperature", None)
-        gravity = getattr(room.db, "gravity", None)
-        radiation = getattr(room.db, "radiation", None)
 
-        if terrain is not None:
-            lines.append(f"Terrain: {terrain}")
-        if elevation is not None:
-            lines.append(f"Elevation: {elevation}")
-        if gravity is not None:
-            lines.append(f"Gravity: {gravity}")
-        if temperature is not None:
-            lines.append(f"Temperature: {temperature}")
-        if radiation is not None:
-            lines.append(f"Radiation: {radiation}")
+class CmdSurfaceDirection(Command):
+    """
+    Base command for direct surface movement aliases.
+    """
 
-        caller.msg("\n".join(lines))
+    key = ""
+    locks = "cmd:all()"
+    help_category = "Surface"
+
+    direction = ""
+
+    def func(self):
+        move_surface(self.caller, self.direction or self.key)
+
+
+class CmdSurfaceNorth(CmdSurfaceDirection):
+    key = "n"
+    aliases = ["north"]
+    direction = "north"
+
+
+class CmdSurfaceNortheast(CmdSurfaceDirection):
+    key = "ne"
+    aliases = ["northeast"]
+    direction = "northeast"
+
+
+class CmdSurfaceEast(CmdSurfaceDirection):
+    key = "e"
+    aliases = ["east"]
+    direction = "east"
+
+
+class CmdSurfaceSoutheast(CmdSurfaceDirection):
+    key = "se"
+    aliases = ["southeast"]
+    direction = "southeast"
+
+
+class CmdSurfaceSouth(CmdSurfaceDirection):
+    key = "s"
+    aliases = ["south"]
+    direction = "south"
+
+
+class CmdSurfaceSouthwest(CmdSurfaceDirection):
+    key = "sw"
+    aliases = ["southwest"]
+    direction = "southwest"
+
+
+class CmdSurfaceWest(CmdSurfaceDirection):
+    key = "w"
+    aliases = ["west"]
+    direction = "west"
+
+
+class CmdSurfaceNorthwest(CmdSurfaceDirection):
+    key = "nw"
+    aliases = ["northwest"]
+    direction = "northwest"
