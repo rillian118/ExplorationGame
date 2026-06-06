@@ -16,6 +16,7 @@ own cmdsets by inheriting from them or directly from `evennia.CmdSet`.
 
 from evennia import default_cmds # type: ignore
 from world.space.cmdsets import SpaceCmdSet
+from world.surface.overlay_commands import SurfaceOverlayCmdSet
 
 
 class CharacterCmdSet(default_cmds.CharacterCmdSet):
@@ -36,6 +37,7 @@ class CharacterCmdSet(default_cmds.CharacterCmdSet):
         # any commands you add below will overload the default ones.
         #
         self.add(SpaceCmdSet())
+        self.add(SurfaceOverlayCmdSet())
 
 
 class AccountCmdSet(default_cmds.AccountCmdSet):
