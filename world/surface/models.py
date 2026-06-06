@@ -61,17 +61,55 @@ class GeneratedSurfaceRoom(BaseRoom):
     """
     Typeclass for materialized procedural surface rooms.
 
-    This makes normal Evennia room display use the generated surface formatter,
-    so movement, look, and disembarkation all show the same surface view.
+    Generated rooms are cache objects. Regeneration should update procedural
+    terrain data while preserving persistent overlay records.
     """
 
     def return_appearance(self, looker, **kwargs):
         view = read_surface_view(self)
         if view:
             from .formatter import format_surface_view
-            return format_surface_view(view)
 
+            return format_surface_view(view)
         return super().return_appearance(looker, **kwargs)
+
+    def regenerate_surface_room(self):
+        """
+        Rebuild this room's procedural surface data from its stored address.
+
+        Persistent overlays are not deleted. They are applied dynamically through
+        read_surface_view().
+        """
+        address = get_surface_address(self)
+        if not address:
+            raise ValueError("This room has no surface_address data.")
+
+        system_name = address.get("system_name")
+        body_id = address.get("body_id")
+        x = address.get("x")
+        y = address.get("y")
+
+        if not system_name or not body_id or x is None or y is None:
+            raise ValueError("This room has incomplete surface_address data.")
+
+        from world.space.models import find_body, find_system_object, read_system_data
+        from world.surface.generator import compose_surface_room
+
+        system_obj = find_system_object(str(system_name))
+        if system_obj is None:
+            raise ValueError(f"No imported system named '{system_name}' was found.")
+
+        system_data = read_system_data(system_obj)
+        if not system_data:
+            raise ValueError(f"System '{system_name}' has no stored system data.")
+
+        body = find_body(system_data, str(body_id))
+        if body is None:
+            raise ValueError(f"No body id '{body_id}' was found in {system_name}.")
+
+        view = compose_surface_room(system_data, body, int(x), int(y))
+        _write_room_data(self, system_data, body, int(x), int(y), view)
+        return self
 
 def surface_address_key(system_name: str, body_id: str, x: int, y: int) -> str:
     """Return a stable tag key for a generated surface coordinate."""
@@ -233,4 +271,32 @@ def read_surface_view(room: Any) -> Dict[str, Any]:
                         ship_names.append(str(ship))
 
     view["landed_ship_names"] = ship_names
+    # Persistent surface overlays: player POIs, landed anchors, future structures, etc.
+    try:
+        address = get_surface_address(room)
+        system_name = address.get("system_name")
+        body_id = address.get("body_id")
+        x = address.get("x")
+        y = address.get("y")
+
+        if system_name and body_id and x is not None and y is not None:
+            planet_key = f"{system_name}:{body_id}"
+            overlays = SurfaceOverlay.objects.filter(
+                planet_key=planet_key,
+                x=int(x),
+                y=int(y),
+                visible_on_surface=True,
+            ).order_by("created_at", "id")
+
+            overlay_lines = []
+            for overlay in overlays:
+                data = overlay.data or {}
+                desc = data.get("description")
+                if desc:
+                    overlay_lines.append(str(desc))
+
+            if overlay_lines:
+                view["surface_overlay_descriptions"] = overlay_lines
+    except Exception:
+        pass
     return view
