@@ -17,6 +17,7 @@ own cmdsets by inheriting from them or directly from `evennia.CmdSet`.
 from evennia import default_cmds # type: ignore
 from world.space.cmdsets import SpaceCmdSet
 from world.surface.overlay_commands import SurfaceOverlayCmdSet
+from world.surface.cleanup_commands import CmdSurfaceCleanupSweep, CmdSurfaceCleanupHere
 
 
 class CharacterCmdSet(default_cmds.CharacterCmdSet):
@@ -38,6 +39,8 @@ class CharacterCmdSet(default_cmds.CharacterCmdSet):
         #
         self.add(SpaceCmdSet())
         self.add(SurfaceOverlayCmdSet())
+        self.add(CmdSurfaceCleanupSweep())
+        self.add(CmdSurfaceCleanupHere())
 
 
 class AccountCmdSet(default_cmds.AccountCmdSet):
