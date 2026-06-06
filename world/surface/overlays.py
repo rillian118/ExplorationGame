@@ -24,16 +24,10 @@ def get_surface_overlays(
     x: int,
     y: int,
     *,
-    visible_only: bool = True,
-    overlay_type: Optional[str] = None,
+    overlay_type: str | None = None,
+    visible_on_surface: bool | None = None,
+    blocks_cleanup: bool | None = None,
 ):
-    """Return overlays for a specific surface coordinate."""
-    qs = SurfaceOverlay.objects.filter(planet_key=planet_key, x=x, y=y)
-    if visible_only:
-        qs = qs.filter(visible_on_surface=True)
-    if overlay_type:
-        qs = qs.filter(overlay_type=overlay_type)
-    return qs.order_by("overlay_type", "id")
 
 
 def has_blocking_surface_overlays(planet_key: str, x: int, y: int) -> bool:
