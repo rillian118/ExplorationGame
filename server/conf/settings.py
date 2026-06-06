@@ -1,4 +1,4 @@
-r"""
+"""
 Evennia settings file.
 
 The available options are found in the default settings file found
@@ -42,13 +42,5 @@ try:
     from server.conf.secret_settings import *
 except ImportError:
     print("secret_settings.py file not found or failed to import.")
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": "explorationmud",
-        "USER": "evennia",
-        "PASSWORD": "G4rd3n1a",
-        "HOST": "localhost",
-        "PORT": "5432",
-    }
-    }
+
+INSTALLED_APPS += ("world.surface.apps.SurfaceConfig",)
