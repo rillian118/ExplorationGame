@@ -7,10 +7,11 @@ in-game command menu for players/builders/admins using the root command.
 
 from __future__ import annotations
 
-from evennia.locks.lockhandler import LockHandler # type: ignore
+from evennia.locks.lockhandler import LockHandler
 
 
 SURFACE_COMMAND_INDEX = [
+    # Admin-only commands.
     {
         "access": "Admin",
         "command": "@surfacecleanupsweep",
@@ -29,6 +30,14 @@ SURFACE_COMMAND_INDEX = [
         "summary": "Check whether the current generated room can be deleted.",
         "lock": "cmd:perm(Admins)",
     },
+    {
+        "access": "Admin",
+        "command": "surface takeoff <ship name|overlay id>",
+        "summary": "Dev/admin takeoff for a landed ship anchor on the current tile.",
+        "lock": "cmd:perm(Admins)",
+    },
+
+    # Builder/debug commands.
     {
         "access": "Builder",
         "command": "@surfaceoverlays",
@@ -59,6 +68,8 @@ SURFACE_COMMAND_INDEX = [
         "summary": "Report whether the current room is cleanup-safe and why.",
         "lock": "cmd:perm(Builders)",
     },
+
+    # General player commands.
     {
         "access": "All",
         "command": "surface",
@@ -82,24 +93,6 @@ SURFACE_COMMAND_INDEX = [
         "command": "n, ne, e, se, s, sw, w, nw",
         "summary": "Move one tile while standing in a generated surface room.",
         "lock": "cmd:all()",
-    },
-    {
-        "access": "All",
-        "command": "surface ships",
-        "summary": "List landed ships visible on the current surface tile.",
-        "lock": "cmd:all()",
-    },
-    {
-        "access": "All",
-        "command": "surface board <ship name|overlay id>",
-        "summary": "Board a landed ship visible on the current surface tile.",
-        "lock": "cmd:all()",
-    },
-    {
-        "access": "Admin",
-        "command": "surface takeoff <ship name|overlay id>",
-        "summary": "Dev/admin takeoff for a landed ship anchor on the current tile.",
-        "lock": "cmd:perm(Admins)",
     },
     {
         "access": "All",
