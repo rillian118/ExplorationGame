@@ -71,7 +71,7 @@ def move_surface(caller, raw_direction: str):
         caller.msg(error)
         return
 
-        try:
+    try:
         from world.surface.generator import evaluate_direction
 
         profile_obj = evaluate_direction(
