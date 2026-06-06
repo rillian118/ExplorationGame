@@ -96,9 +96,12 @@ def move_surface(caller, raw_direction: str):
     try:
         target_room = get_or_create_surface_room(system_data, body, target_x, target_y)
     except Exception as err:
-        caller.msg(f"Surface movement failed: {err}")
-        return
+        import traceback
 
+        caller.msg(f"Surface movement failed: {err}")
+        caller.msg(traceback.format_exc())
+        return
+    
     message = profile.get("message")
     if message:
         caller.msg(message)
