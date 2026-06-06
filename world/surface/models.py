@@ -12,6 +12,8 @@ from .generator import SurfaceRoomView, compose_surface_room
 from typeclasses.rooms import Room as BaseRoom
 
 from django.db import models
+from evennia.objects.models import ObjectDB
+from evennia.accounts.models import AccountDB
 
 SURFACE_TAG = "generated_surface_room"
 SURFACE_TAG_CATEGORY = "surface"
