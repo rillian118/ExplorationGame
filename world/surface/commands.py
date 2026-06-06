@@ -198,3 +198,22 @@ class SurfaceOverlayCmdSet(CmdSet):
         self.add(CmdRemoveSurfaceOverlay())
         self.add(CmdRegenSurface())
         self.add(CmdSurfaceCleanupCheck())
+
+class CmdSurface(MuxCommand):
+    """
+    Temporary compatibility command for the SpaceCmdSet.
+
+    This preserves the expected CmdSurface import while surface overlay
+    commands are being integrated.
+    """
+
+    key = "surface"
+    aliases = ["surf"]
+    locks = "cmd:all()"
+    help_category = "Surface"
+
+    def func(self):
+        self.caller.msg(
+            "Surface command is currently under reconstruction. "
+            "Use @surfaceoverlays, @addsurfacepoi, @regensurface, or @surfacecleanupcheck for overlay testing."
+        )
