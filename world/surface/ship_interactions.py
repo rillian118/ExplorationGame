@@ -17,10 +17,11 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
-from evennia.objects.models import ObjectDB
+from evennia.objects.models import ObjectDB # type: ignore
 
 from world.surface.models import SurfaceOverlay, get_surface_address, is_surface_room
-from world.surface.overlays import get_surface_overlays
+from world.surface.overlays import get_surface_overlays, remove_landed_ship_overlay
+from world.surface.room_events import announce_surface_event, describe_ship_takeoff
 
 
 LANDING_OVERLAY_TYPE = "landed_ship_anchor"
@@ -131,6 +132,95 @@ def get_landed_ship_overlays_at_caller(caller) -> list[SurfaceOverlay]:
 def _overlay_ship_name(overlay: SurfaceOverlay) -> str:
     data = overlay.data or {}
     return str(data.get("ship_name") or data.get("name") or f"overlay #{overlay.id}")
+
+def _can_admin_takeoff(caller) -> bool:
+    """
+    v0.1 authorization gate for surface takeoff.
+
+    Later, replace or extend this with ship ownership/crew permission checks.
+    """
+    try:
+        return bool(caller.check_permstring("Admins"))
+    except Exception:
+        try:
+            return bool(caller.permissions.check("Admins"))
+        except Exception:
+            return False
+
+
+def takeoff_landed_ship(caller, query: str) -> str:
+    """
+    Admin/dev takeoff for a landed ship visible at caller's current surface tile.
+
+    Returns a user-facing status message. On success, this removes the
+    landed_ship_anchor overlay and updates the ship's location_state away from
+    landed mode.
+    """
+    if get_current_surface_overlay_key(caller) is None:
+        return "You are not standing on a generated surface tile."
+
+    if not _can_admin_takeoff(caller):
+        return "You do not have permission to force surface takeoff."
+
+    if not query.strip():
+        return "Usage: surface takeoff <ship name|overlay id>"
+
+    overlay = find_landed_ship_overlay(caller, query)
+    if overlay is None:
+        return "No matching landed ship is visible here. Use 'surface ships' to list ships."
+
+    ship = _ship_from_overlay(overlay)
+    if ship is None:
+        return f"Landed ship overlay #{overlay.id} no longer resolves to a ship object."
+
+    room = caller.location
+    ship_name = _overlay_ship_name(overlay)
+
+    # Preserve useful state from the overlay before deleting it.
+    data = overlay.data or {}
+    system_name = data.get("system_name")
+    body_id = data.get("body_id")
+    body_name = data.get("body_name") or body_id
+
+    # Announce before the overlay disappears so observers get immediate feedback.
+    announce_surface_event(room, describe_ship_takeoff(ship_name), exclude=[caller])
+
+    # Update ship state. This is intentionally conservative: we avoid inventing
+    # orbital coordinates here. The important v0.1 transition is "not landed".
+    try:
+        from world.space.shipstate import write_ship_location, read_ship_location
+
+        old_state = read_ship_location(ship) or {}
+        state = dict(old_state)
+        state["mode"] = "space"
+        state["system"] = system_name or state.get("system")
+        state["body_id"] = body_id or state.get("body_id")
+        state["body_name"] = body_name or state.get("body_name")
+        state["last_surface_coordinates"] = dict(state.get("coordinates") or {})
+        state["coordinates"] = state.get("space_coordinates") or {}
+        write_ship_location(ship, state)
+    except Exception:
+        # Do not leave a landed overlay behind if the command's purpose is to
+        # force takeoff during early development.
+        pass
+
+    try:
+        remove_landed_ship_overlay(ship)
+    except Exception:
+        # Fallback: delete the exact overlay resolved by the command.
+        try:
+            overlay.delete()
+        except Exception:
+            pass
+
+    try:
+        if room and hasattr(room, "regenerate_surface_room"):
+            room.regenerate_surface_room()
+    except Exception:
+        pass
+
+    return f"{ship_name} has taken off."
+
 
 
 def render_surface_ships(caller) -> str:

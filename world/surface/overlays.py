@@ -7,6 +7,8 @@ from __future__ import annotations
 from typing import Iterable
 
 from world.surface.models import SurfaceOverlay
+from world.surface.room_events import announce_surface_event, describe_ship_landing
+
 
 
 def get_surface_overlays(
@@ -134,6 +136,14 @@ def create_or_update_landed_ship_overlay(ship, *, system_name: str, body_id: str
             "visible_on_surface": True,
         },
     )
+    try:
+        from world.surface.models import find_surface_room
+
+        room = find_surface_room(str(system_name), str(body_id), int(x), int(y))
+        if room is not None:
+            announce_surface_event(room, describe_ship_landing(ship_name))
+    except Exception:
+        pass
 
     return overlay
 

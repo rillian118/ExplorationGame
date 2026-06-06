@@ -7,7 +7,7 @@ in-game command menu for players/builders/admins using the root command.
 
 from __future__ import annotations
 
-from evennia.locks.lockhandler import LockHandler
+from evennia.locks.lockhandler import LockHandler # type: ignore
 
 
 SURFACE_COMMAND_INDEX = [
@@ -93,6 +93,24 @@ SURFACE_COMMAND_INDEX = [
         "access": "All",
         "command": "surface board <ship name|overlay id>",
         "summary": "Board a landed ship visible on the current surface tile.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "Admin",
+        "command": "surface takeoff <ship name|overlay id>",
+        "summary": "Dev/admin takeoff for a landed ship anchor on the current tile.",
+        "lock": "cmd:perm(Admins)",
+    },
+    {
+        "access": "All",
+        "command": "surface ships",
+        "summary": "List visible landed ships on the current surface tile.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "surface board <ship name|overlay id>",
+        "summary": "Board a visible landed ship on the current tile.",
         "lock": "cmd:all()",
     },
 ]

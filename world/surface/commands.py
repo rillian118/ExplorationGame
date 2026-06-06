@@ -161,6 +161,14 @@ class CmdSurface(Command):
             if message:
                 caller.msg(message)
             return
+        
+        if parts[0].lower() == "takeoff":
+            from world.surface.ship_interactions import takeoff_landed_ship
+
+            result = takeoff_landed_ship(caller, parts[1] if len(parts) > 1 else "")
+            if result:
+                caller.msg(result)
+            return
 
         if len(parts) == 2 and parts[0].lower() == "move":
             move_surface(caller, parts[1])
