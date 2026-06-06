@@ -65,10 +65,10 @@ def format_surface_view(view: Dict[str, Any]) -> str:
         description,
     ]
 
-    if landed_ship_names:
+    """if landed_ship_names:
         lines.append("")
         for ship_name in landed_ship_names:
-            lines.append(f"A ship, {ship_name}, rests nearby on its landing struts.")
+            lines.append(f"A ship, {ship_name}, rests nearby on its landing struts.")"""
 
     overlay_descriptions = view.get("surface_overlay_descriptions") or []
     for desc in overlay_descriptions:

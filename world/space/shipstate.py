@@ -288,6 +288,15 @@ def set_ship_landed(ship: Any, system_name: str, body_query: str, x: int, y: int
         }
     )
     write_ship_location(ship, state)
+
+    try:
+        from world.surface.overlays import sync_landed_ship_overlay
+
+        sync_landed_ship_overlay(ship)
+    except Exception:
+        # Ship state should still update even if overlay sync fails.
+        pass
+
     return state
 
 

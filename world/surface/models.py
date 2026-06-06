@@ -246,31 +246,6 @@ def read_surface_view(room: Any) -> Dict[str, Any]:
     except Exception:
         return {}
 
-    try:
-        dbrefs = room.attributes.get("landed_ship_dbrefs") or []
-    except Exception:
-        dbrefs = []
-
-    ship_names = []
-
-    if dbrefs:
-        try:
-            from world.space.shipstate import find_ship
-        except Exception:
-            find_ship = None
-
-        if find_ship:
-            for dbref in dbrefs:
-                ship = find_ship(str(dbref))
-                if ship is not None:
-                    try:
-                        ship_names.append(
-                            str(ship.attributes.get("ship_name") or ship.key)
-                        )
-                    except Exception:
-                        ship_names.append(str(ship))
-
-    view["landed_ship_names"] = ship_names
     # Persistent surface overlays: player POIs, landed anchors, future structures, etc.
     try:
         address = get_surface_address(room)
