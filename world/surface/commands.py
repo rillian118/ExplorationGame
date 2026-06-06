@@ -125,7 +125,13 @@ class CmdSurface(Command):
         caller = self.caller
         raw = self.args.strip()
 
-        if not raw or raw.lower() in ("where", "coords", "location"):
+        if not raw:
+            from world.surface.command_index import render_surface_command_index
+
+            caller.msg(render_surface_command_index(caller))
+            return
+
+        if raw.lower() in ("where", "coords", "location"):
             room, address, system_data, body, error = _get_current_surface_context(caller)
             if error:
                 caller.msg(error)
