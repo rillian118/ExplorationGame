@@ -83,6 +83,18 @@ SURFACE_COMMAND_INDEX = [
         "summary": "Move one tile while standing in a generated surface room.",
         "lock": "cmd:all()",
     },
+    {
+        "access": "All",
+        "command": "surface ships",
+        "summary": "List landed ships visible on the current surface tile.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "surface board <ship name|overlay id>",
+        "summary": "Board a landed ship visible on the current surface tile.",
+        "lock": "cmd:all()",
+    },
 ]
 
 

@@ -144,13 +144,29 @@ class CmdSurface(Command):
                 f"({address.get('x')}, {address.get('y')})"
             )
             return
+        
+        if raw.lower() in ("ships", "landed ships", "landed"):
+            from world.surface.ship_interactions import render_surface_ships
+
+            caller.msg(render_surface_ships(caller))
+            return
 
         parts = raw.split(None, 1)
+
+        if parts[0].lower() == "board":
+            from world.surface.ship_interactions import board_landed_ship
+
+            query = parts[1] if len(parts) > 1 else ""
+            message = board_landed_ship(caller, query)
+            if message:
+                caller.msg(message)
+            return
+
         if len(parts) == 2 and parts[0].lower() == "move":
             move_surface(caller, parts[1])
             return
 
-        caller.msg("Usage: surface, surface where, or surface move <direction>.")
+        caller.msg("Usage: surface, surface where, surface ships, surface board <ship>, or surface move <direction>.")
 
 
 class CmdSurfaceDirection(Command):
