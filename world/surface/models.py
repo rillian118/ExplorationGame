@@ -5,7 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Dict, Optional
 
-from evennia import create_object, search_tag # type: ignore
+from evennia.utils.create import create_object
+from evennia.utils.search import search_tag
 
 from .generator import SurfaceRoomView, compose_surface_room
 
