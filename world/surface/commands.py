@@ -71,24 +71,27 @@ def move_surface(caller, raw_direction: str):
         caller.msg(error)
         return
 
-    view = _as_dict(room.attributes.get("surface_view"))
-    directions = _as_dict(view.get("directions"))
-    profile = _as_dict(directions.get(direction))
+        try:
+        from world.surface.generator import evaluate_direction
 
-    if not profile:
-        caller.msg(f"No generated movement data is available for {direction}.")
+        profile_obj = evaluate_direction(
+            system_data,
+            body,
+            int(address.get("x")),
+            int(address.get("y")),
+            direction,
+        )
+        profile = profile_obj.to_dict()
+    except Exception as err:
+        caller.msg(f"Could not generate movement data for {direction}: {err}")
         return
 
     if not profile.get("allowed", True):
         caller.msg(profile.get("blocked_reason") or f"You cannot travel {direction}.")
         return
 
-    try:
-        target_x = int(profile.get("target_x"))
-        target_y = int(profile.get("target_y"))
-    except Exception:
-        caller.msg(f"The generated movement data for {direction} is incomplete.")
-        return
+    target_x = int(profile["target_x"])
+    target_y = int(profile["target_y"])
 
     try:
         target_room = get_or_create_surface_room(system_data, body, target_x, target_y)
