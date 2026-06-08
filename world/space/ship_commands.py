@@ -10,6 +10,9 @@ from evennia import Command  # type: ignore
 from world.space.models import find_body, find_system_object, read_system_data
 from world.surface.models import get_or_create_surface_room, get_surface_address, is_surface_room
 
+from world.space.command_index import render_ship_command_index
+from world.space.ship_landing import land_current_ship
+
 from .shipstate import (
     clear_current_ship_for_caller,
     create_ship,
@@ -208,7 +211,8 @@ class CmdShip(Command):
     def func(self):
         raw = self.args.strip()
         if not raw:
-            raw = "status"
+            self.caller.msg(render_ship_command_index(self.caller))
+            return
 
         parts = raw.split(None, 1)
         subcmd = parts[0].lower()
@@ -233,6 +237,10 @@ class CmdShip(Command):
                 self.caller.msg("No current ship selected. Use 'ship board <ship>' or 'ship status <ship>'.")
                 return
             self.caller.msg(format_ship_status(ship))
+            return
+            
+        if subcmd == "land":
+            self.caller.msg(land_current_ship(self.caller, rest))
             return
 
         if subcmd == "board":
@@ -362,9 +370,10 @@ class CmdShip(Command):
             return
 
         self.caller.msg(
-            "Usage: ship, ship status [ship], ship list, ship board <ship>, "
+            "Usage: ship, ship status [ship], ship list, ship board <ship>, ship leave,"
             "ship leave, ship create <name>, ship setloc <ship> system <system>, "
             "ship setloc <ship> orbit <system>/<body>, "
             "ship setloc <ship> landed <system>/<body> <x> <y>, "
+            "ship land <x> <y>, ship land <system>/<body> <x> <y>, "
             "ship disembark [ship], ship embark [ship]"
         )
