@@ -11,7 +11,7 @@ Behavior:
     - requires that ship to be in landed mode
     - resolves the generated surface room, if possible
     - emits surface-room takeoff flavor
-    - updates ship location_state away from landed mode
+    - updates ship location_state from landed to orbiting
     - removes the landed_ship_anchor SurfaceOverlay
     - regenerates the surface room so `look` no longer shows the ship
 """
@@ -111,12 +111,19 @@ def takeoff_current_ship(caller) -> str:
         except Exception:
             pass
 
-    new_state = dict(state)
     old_coordinates = _as_dict(state.get("coordinates"))
 
-    new_state["mode"] = "space"
+    new_state = dict(state)
+    new_state["mode"] = "orbiting"
     new_state["last_surface_coordinates"] = old_coordinates
-    new_state["coordinates"] = _as_dict(state.get("space_coordinates"))
+    new_state["coordinates"] = None
+    new_state["site_id"] = None
+    new_state["dock_id"] = None
+    new_state["notes"] = [
+        f"Ship has taken off from surface coordinates "
+        f"{old_coordinates.get('x')}, {old_coordinates.get('y')} "
+        f"and is in orbit around {state.get('body_name') or state.get('body_id')}."
+    ]
 
     write_ship_location(ship, new_state)
 
