@@ -8,7 +8,7 @@ through a large global help list.
 
 from __future__ import annotations
 
-from evennia.locks.lockhandler import LockHandler
+from evennia.locks.lockhandler import LockHandler # type: ignore
 
 
 SHIP_COMMAND_INDEX = [
@@ -76,6 +76,12 @@ SHIP_COMMAND_INDEX = [
         "access": "All",
         "command": "ship land <system>/<body> <x> <y>",
         "summary": "Land your current ship at an explicit surface coordinate.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "ship takeoff",
+        "summary": "Take off in your current landed ship.",
         "lock": "cmd:all()",
     },
     {

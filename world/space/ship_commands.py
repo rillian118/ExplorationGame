@@ -12,6 +12,7 @@ from world.surface.models import get_or_create_surface_room, get_surface_address
 
 from world.space.command_index import render_ship_command_index
 from world.space.ship_landing import land_current_ship
+from world.space.ship_takeoff import takeoff_current_ship
 
 from .shipstate import (
     clear_current_ship_for_caller,
@@ -329,7 +330,9 @@ class CmdShip(Command):
                 f"system={state.get('system')} body={body_label}{coord_label}."
             )
             return
-
+        if subcmd == "takeoff":
+            self.caller.msg(takeoff_current_ship(self.caller))
+            return
         if subcmd == "disembark":
             ship = self._resolve_ship_or_current(rest)
             if ship is None:
@@ -375,5 +378,5 @@ class CmdShip(Command):
             "ship setloc <ship> orbit <system>/<body>, "
             "ship setloc <ship> landed <system>/<body> <x> <y>, "
             "ship land <x> <y>, ship land <system>/<body> <x> <y>, "
-            "ship disembark [ship], ship embark [ship]"
+            "ship disembark [ship], ship embark [ship], ship takeoff"
         )
