@@ -40,10 +40,12 @@ class CmdSurvey(Command):
       survey scan radius <number>
       survey scan resolution <number>
       survey scan band
-      survey scan band start y <number>
-      survey scan band next
+      survey scan band start y <number> [interval <seconds>]
       survey scan band status
-      survey scan band clear
+      survey scan band pause
+      survey scan band resume
+      survey scan band step
+      survey scan band cancel
       survey status
       survey datasets
       survey cartridges
@@ -160,7 +162,8 @@ class CmdSurvey(Command):
 
         caller.msg(
             "Usage: survey, survey scan [radius <number>] [resolution <number>], "
-            "survey scan band [start, next, status, or clear], survey status, survey datasets, "
+            "survey scan band [start, status, pause, resume, step, or cancel], "
+            "survey status, survey datasets, "
             "survey cartridges, survey map, survey map brief, survey map list, "
             "survey detail <x> <y>, survey inspect <id or cartridge>, "
             "survey export <name>, survey materialize <dataset id>, "

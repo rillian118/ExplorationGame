@@ -33,13 +33,13 @@ SURVEY_COMMAND_INDEX = [
     {
         "access": "All",
         "command": "survey scan band",
-        "summary": "Run the next step of a resumable horizontal orbital band survey.",
+        "summary": "Show the active timed orbital band survey status.",
         "lock": "cmd:all()",
     },
     {
         "access": "All",
-        "command": "survey scan band start y <number>",
-        "summary": "Start a horizontal orbital band survey at a surface y coordinate.",
+        "command": "survey scan band start y <number> [interval <seconds>]",
+        "summary": "Start a timed horizontal orbital band survey at a surface y coordinate.",
         "lock": "cmd:all()",
     },
     {
@@ -50,8 +50,26 @@ SURVEY_COMMAND_INDEX = [
     },
     {
         "access": "All",
-        "command": "survey scan band clear",
-        "summary": "Clear the active orbital band survey cursor.",
+        "command": "survey scan band pause",
+        "summary": "Pause the active timed orbital band survey.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "survey scan band resume",
+        "summary": "Resume a paused timed orbital band survey.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "survey scan band step",
+        "summary": "Manually process one band step for testing or recovery.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "survey scan band cancel",
+        "summary": "Cancel and clear the active orbital band survey.",
         "lock": "cmd:all()",
     },
     {
