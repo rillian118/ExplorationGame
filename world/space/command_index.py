@@ -122,7 +122,7 @@ SHIP_COMMAND_INDEX = [
     },
     {
         "access": "All",
-        "command": "ship access add <player> <owner|crew|passenger>",
+        "command": "ship access add <player> <owner||crew||passenger>",
         "summary": "Owner/admin: grant ship access.",
         "lock": "cmd:all()",
     },

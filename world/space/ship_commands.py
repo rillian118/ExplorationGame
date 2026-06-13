@@ -232,7 +232,7 @@ class CmdShip(Command):
     def _handle_capabilities(self, rest: str) -> None:
         rest = (rest or "").strip()
         usage = (
-            "Usage: ship capabilities [ship] | "
+            "Usage: ship capabilities [ship] or "
             f"ship capabilities set [ship] <{capability_names()}> <value>"
         )
 

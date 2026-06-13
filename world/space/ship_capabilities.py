@@ -65,7 +65,7 @@ def default_ship_capabilities() -> dict[str, int]:
 
 def capability_names() -> str:
     """Return a compact list of supported capability keys."""
-    return "|".join(CAPABILITY_DEFINITIONS.keys())
+    return ", ".join(CAPABILITY_DEFINITIONS.keys())
 
 
 def normalize_capability_name(name: str) -> str | None:

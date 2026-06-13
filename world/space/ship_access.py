@@ -402,7 +402,7 @@ def handle_ship_access_command(caller: Any, ship: Any, rest: str) -> str:
 
     if subcmd in {"add", "set", "role"}:
         if len(parts) < 3:
-            return "Usage: ship access add <player> <owner|crew|passenger>"
+            return "Usage: ship access add <player> <owner||crew||passenger>"
 
         target_query = " ".join(parts[1:-1])
         role = parts[-1]

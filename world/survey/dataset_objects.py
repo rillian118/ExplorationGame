@@ -335,7 +335,7 @@ def render_dataset_or_cartridge_detail(
     """
     query = (query or "").strip()
     if not query:
-        return "Usage: survey inspect <dataset id|cartridge>"
+        return "Usage: survey inspect <dataset id or cartridge>"
 
     numeric = query.lstrip("#").isdigit()
     if numeric:
