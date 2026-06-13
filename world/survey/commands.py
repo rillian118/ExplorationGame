@@ -1,9 +1,5 @@
 """
 Survey command group.
-
-This is the initial data-backbone command set. It intentionally does not yet
-perform active sensor scans; it exposes the persistent storage surface for
-coverage and packaged datasets.
 """
 
 from __future__ import annotations
@@ -12,6 +8,7 @@ from evennia import Command  # type: ignore
 from evennia.commands.cmdset import CmdSet  # type: ignore
 
 from world.survey.command_index import render_survey_command_index
+from world.survey.scanning import run_orbital_survey_scan
 from world.survey.services import (
     actor_owner_key,
     render_coverage_status,
@@ -27,6 +24,7 @@ class CmdSurvey(Command):
 
     Usage:
       survey
+      survey scan
       survey status
       survey datasets
       survey inspect <dataset id>
@@ -48,6 +46,10 @@ class CmdSurvey(Command):
         parts = raw.split(None, 1)
         subcmd = parts[0].lower()
         rest = parts[1].strip() if len(parts) > 1 else ""
+
+        if subcmd == "scan":
+            caller.msg(run_orbital_survey_scan(caller))
+            return
 
         try:
             owner_scope, owner_id = actor_owner_key(caller)
@@ -89,7 +91,10 @@ class CmdSurvey(Command):
                 caller.msg(f"Survey export failed: {err}")
             return
 
-        caller.msg("Usage: survey, survey status, survey datasets, survey inspect <id>, survey export <name>")
+        caller.msg(
+            "Usage: survey, survey scan, survey status, survey datasets, "
+            "survey inspect <id>, survey export <name>"
+        )
 
 
 class SurveyCmdSet(CmdSet):

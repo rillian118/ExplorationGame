@@ -14,6 +14,12 @@ SURVEY_COMMAND_INDEX = [
     },
     {
         "access": "All",
+        "command": "survey scan",
+        "summary": "Run an orbital terrain survey from your current ship.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
         "command": "survey status",
         "summary": "Show your current survey coverage summary.",
         "lock": "cmd:all()",
