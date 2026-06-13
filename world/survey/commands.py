@@ -37,8 +37,8 @@ class CmdSurvey(Command):
     Usage:
       survey
       survey scan
-      survey scan radius <0-3>
-      survey scan resolution <1-3>
+      survey scan radius <number>
+      survey scan resolution <number>
       survey status
       survey datasets
       survey cartridges
@@ -154,7 +154,7 @@ class CmdSurvey(Command):
             return
 
         caller.msg(
-            "Usage: survey, survey scan [radius <0-3>] [resolution <1-3>], survey status, survey datasets, "
+            "Usage: survey, survey scan [radius <number>] [resolution <number>], survey status, survey datasets, "
             "survey cartridges, survey map, survey map brief, survey map list, "
             "survey detail <x> <y>, survey inspect <id or cartridge>, "
             "survey export <name>, survey materialize <dataset id>, "

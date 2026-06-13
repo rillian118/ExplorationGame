@@ -43,6 +43,12 @@ SHIP_COMMAND_INDEX = [
         "lock": "cmd:perm(Builders)",
     },
     {
+        "access": "Builder",
+        "command": "ship capabilities set [ship] <capability> <value>",
+        "summary": "Set prototype survey/sensor capability values for a ship.",
+        "lock": "cmd:perm(Builders)",
+    },
+    {
         "access": "All",
         "command": "ship",
         "summary": "Show this ship command index.",
@@ -52,6 +58,12 @@ SHIP_COMMAND_INDEX = [
         "access": "All",
         "command": "ship status [ship]",
         "summary": "Show status for your current ship or a named ship.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "ship capabilities [ship]",
+        "summary": "Show survey/sensor capability values for your current ship or a named ship.",
         "lock": "cmd:all()",
     },
     {

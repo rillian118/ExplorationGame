@@ -20,14 +20,14 @@ SURVEY_COMMAND_INDEX = [
     },
     {
         "access": "All",
-        "command": "survey scan radius <0-3>",
-        "summary": "Run a capped wider orbital survey footprint.",
+        "command": "survey scan radius <number>",
+        "summary": "Request a wider orbital survey footprint, limited by ship capability.",
         "lock": "cmd:all()",
     },
     {
         "access": "All",
-        "command": "survey scan resolution <1-3>",
-        "summary": "Record the scan at a capped higher prototype resolution.",
+        "command": "survey scan resolution <number>",
+        "summary": "Request higher scan resolution, limited by ship capability.",
         "lock": "cmd:all()",
     },
     {

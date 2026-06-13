@@ -10,6 +10,11 @@ from evennia import Command  # type: ignore
 from world.space.models import find_body, find_system_object, read_system_data
 from world.surface.models import get_or_create_surface_room, get_surface_address, is_surface_room
 
+from world.space.ship_capabilities import (
+    capability_names,
+    render_ship_capabilities,
+    set_ship_capability,
+)
 from world.space.command_index import render_ship_command_index
 from world.space.ship_landing import land_current_ship
 from world.space.ship_takeoff import takeoff_current_ship
@@ -224,6 +229,63 @@ class CmdShip(Command):
             return find_ship(query)
         return get_current_ship_for_caller(self.caller)
 
+    def _handle_capabilities(self, rest: str) -> None:
+        rest = (rest or "").strip()
+        usage = (
+            "Usage: ship capabilities [ship] | "
+            f"ship capabilities set [ship] <{capability_names()}> <value>"
+        )
+
+        action_parts = rest.split(None, 1)
+        action = action_parts[0].lower() if action_parts else ""
+
+        if action == "set":
+            if not _is_builder(self.caller):
+                self.caller.msg("You do not have permission to set ship capabilities.")
+                return
+
+            set_args = action_parts[1].strip() if len(action_parts) > 1 else ""
+            if not set_args:
+                self.caller.msg(usage)
+                return
+
+            parts = set_args.split()
+            ship = None
+
+            if len(parts) == 2:
+                capability_name, value_text = parts
+                ship = get_current_ship_for_caller(self.caller)
+                if ship is None:
+                    self.caller.msg("No current ship selected. Use 'ship board <ship>' first, or name the ship.")
+                    return
+            else:
+                try:
+                    ship_query, capability_name, value_text = set_args.rsplit(None, 2)
+                except ValueError:
+                    self.caller.msg(usage)
+                    return
+
+                ship = find_ship(ship_query)
+                if ship is None:
+                    self.caller.msg(f"No ship named '{ship_query}' was found.")
+                    return
+
+            try:
+                key, value, _capabilities = set_ship_capability(ship, capability_name, value_text)
+            except Exception as err:
+                self.caller.msg(f"Could not set ship capability: {err}")
+                return
+
+            self.caller.msg(f"Updated {_ship_display_name(ship)}: {key} = {value}.")
+            return
+
+        ship = self._resolve_ship_or_current(rest)
+        if ship is None:
+            self.caller.msg("No current ship selected. Use 'ship capabilities <ship>' or 'ship board <ship>'.")
+            return
+
+        self.caller.msg(render_ship_capabilities(ship))
+
     def func(self):
         raw = self.args.strip()
         if not raw:
@@ -253,6 +315,10 @@ class CmdShip(Command):
                 self.caller.msg("No current ship selected. Use 'ship board <ship>' or 'ship status <ship>'.")
                 return
             self.caller.msg(format_ship_status(ship))
+            return
+
+        if subcmd in ("capabilities", "capability", "caps"):
+            self._handle_capabilities(rest)
             return
             
         if subcmd == "land":
@@ -455,6 +521,6 @@ class CmdShip(Command):
             "ship land <x> <y>, ship land <system>/<body> <x> <y>, "
             "ship interior <ship>, "
             "ship disembark <ship>, ship embark <ship>, ship takeoff, "
+            "ship capabilities [ship], ship capabilities set [ship] <capability> <value>, "
             "ship access, ship access add <player> <role>, ship access remove <player>"
         )
-    

@@ -20,6 +20,12 @@ from collections.abc import Mapping
 from typing import Any
 
 from world.space.models import find_body, find_system_object, read_system_data
+from world.space.ship_capabilities import (
+    CAP_SENSOR_QUALITY,
+    CAP_SURVEY_MAX_RADIUS,
+    CAP_SURVEY_MAX_RESOLUTION,
+    read_ship_capabilities,
+)
 from world.space.ship_access import ACTION_OPERATE, require_ship_access
 from world.space.shipstate import get_current_ship_for_caller, read_ship_location
 from world.survey.models import SCAN_TERRAIN, SurveyCoverage
@@ -30,8 +36,6 @@ from world.survey.services import actor_owner_key, upsert_coverage_tile
 DEFAULT_SCAN_RADIUS = 1
 DEFAULT_SCAN_RESOLUTION = 1
 DEFAULT_SCAN_QUALITY = 100
-MAX_SCAN_RADIUS = 3
-MAX_SCAN_RESOLUTION = 3
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -176,8 +180,7 @@ def parse_scan_options(args: str) -> tuple[dict[str, int], str]:
         survey scan resolution 2
         survey scan radius 2 resolution 2
 
-    Values are capped here as a prototype stand-in for future sensor equipment,
-    crew skill, power allocation, and environmental constraints.
+    Values are capped later by the current ship's survey capabilities.
     """
     tokens = (args or "").split()
     options = {
@@ -191,7 +194,7 @@ def parse_scan_options(args: str) -> tuple[dict[str, int], str]:
 
         if token in {"radius", "range"}:
             if i + 1 >= len(tokens):
-                return options, "Usage: survey scan radius <0-3>"
+                return options, "Usage: survey scan radius <number>"
             try:
                 radius = int(tokens[i + 1])
             except ValueError:
@@ -200,13 +203,13 @@ def parse_scan_options(args: str) -> tuple[dict[str, int], str]:
             if radius < 0:
                 return options, "Scan radius cannot be negative."
 
-            options["radius"] = _clamp_int(radius, minimum=0, maximum=MAX_SCAN_RADIUS)
+            options["radius"] = radius
             i += 2
             continue
 
         if token in {"resolution", "res"}:
             if i + 1 >= len(tokens):
-                return options, "Usage: survey scan resolution <1-3>"
+                return options, "Usage: survey scan resolution <number>"
             try:
                 resolution = int(tokens[i + 1])
             except ValueError:
@@ -215,13 +218,13 @@ def parse_scan_options(args: str) -> tuple[dict[str, int], str]:
             if resolution < 1:
                 return options, "Scan resolution must be at least 1."
 
-            options["resolution"] = _clamp_int(resolution, minimum=1, maximum=MAX_SCAN_RESOLUTION)
+            options["resolution"] = resolution
             i += 2
             continue
 
         return (
             options,
-            "Usage: survey scan [radius <0-3>] [resolution <1-3>]",
+            "Usage: survey scan [radius <number>] [resolution <number>]",
         )
 
     return options, ""
@@ -284,8 +287,23 @@ def run_orbital_survey_scan(
 
     owner_scope, owner_id = actor_owner_key(caller)
     center_x, center_y = _scan_center_from_state(str(system_name), str(body_id), state, body)
-    radius = _clamp_int(int(radius), minimum=0, maximum=MAX_SCAN_RADIUS)
-    resolution = _clamp_int(int(resolution), minimum=1, maximum=MAX_SCAN_RESOLUTION)
+
+    capabilities = read_ship_capabilities(ship)
+    max_radius = int(capabilities.get(CAP_SURVEY_MAX_RADIUS, DEFAULT_SCAN_RADIUS))
+    max_resolution = int(capabilities.get(CAP_SURVEY_MAX_RESOLUTION, DEFAULT_SCAN_RESOLUTION))
+    sensor_quality = int(capabilities.get(CAP_SENSOR_QUALITY, DEFAULT_SCAN_QUALITY))
+
+    requested_radius = int(radius)
+    requested_resolution = int(resolution)
+    radius = _clamp_int(requested_radius, minimum=0, maximum=max_radius)
+    resolution = _clamp_int(requested_resolution, minimum=1, maximum=max_resolution)
+
+    limit_notes = []
+    if radius != requested_radius:
+        limit_notes.append(f"radius {requested_radius} capped to {radius} by ship capability")
+    if resolution != requested_resolution:
+        limit_notes.append(f"resolution {requested_resolution} capped to {resolution} by ship capability")
+
     points = _scan_points(center_x, center_y, radius)
 
     records: list[dict[str, Any]] = []
@@ -310,6 +328,9 @@ def run_orbital_survey_scan(
                 "scan_center": {"x": center_x, "y": center_y},
                 "scan_radius": radius,
                 "scan_resolution": resolution,
+                "ship_survey_max_radius": max_radius,
+                "ship_survey_max_resolution": max_resolution,
+                "sensor_quality": sensor_quality,
                 "source_ship_name": _ship_name(ship),
             }
         )
@@ -324,7 +345,7 @@ def run_orbital_survey_scan(
             y=int(y),
             scan_type=SCAN_TERRAIN,
             resolution=resolution,
-            quality=DEFAULT_SCAN_QUALITY,
+            quality=sensor_quality,
             source_ship_id=int(ship.id),
             data=data,
         )
@@ -340,7 +361,7 @@ def run_orbital_survey_scan(
                 "y": int(y),
                 "data": data,
                 "resolution": resolution,
-                "quality": DEFAULT_SCAN_QUALITY,
+                "quality": sensor_quality,
                 "existed": existed,
             }
         )
@@ -354,4 +375,5 @@ def run_orbital_survey_scan(
         records=records,
         created_count=created_count,
         updated_count=updated_count,
+        limit_notes=limit_notes,
     )

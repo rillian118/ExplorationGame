@@ -198,6 +198,7 @@ def render_orbital_scan_report(
     records: list[dict[str, Any]],
     created_count: int,
     updated_count: int,
+    limit_notes: list[str] | None = None,
 ) -> str:
     """
     Render a semantic orbital scan report.
@@ -216,6 +217,8 @@ def render_orbital_scan_report(
     terrain_counts = Counter(_terrain_label(record.get("data") or {}) for record in records)
     resolutions = sorted({int(record.get("resolution") or 0) for record in records})
     resolution_label = ", ".join(str(value) for value in resolutions if value) or "unknown"
+    qualities = sorted({int(record.get("quality") or 0) for record in records})
+    quality_label = ", ".join(str(value) for value in qualities if value) or "unknown"
 
     lines = [
         "Orbital terrain survey complete.",
@@ -224,8 +227,12 @@ def render_orbital_scan_report(
         f"Scan center: {center_x},{center_y}",
         f"Scan footprint: radius {radius}, {total} tile(s)",
         f"Scan resolution: {resolution_label}",
+        f"Scan quality: {quality_label}",
         f"Coverage update: {created_count} new, {updated_count} existing updated/merged.",
     ]
+
+    if limit_notes:
+        lines.append(f"Scan limits applied: {'; '.join(limit_notes)}.")
 
     if terrain_counts:
         lines.append("")
