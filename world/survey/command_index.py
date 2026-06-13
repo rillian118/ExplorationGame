@@ -38,7 +38,7 @@ SURVEY_COMMAND_INDEX = [
     },
     {
         "access": "All",
-        "command": "survey inspect <dataset id|cartridge>",
+        "command": "survey inspect <dataset id or cartridge>",
         "summary": "Inspect an owned dataset or a carried survey data cartridge.",
         "lock": "cmd:all()",
     },
