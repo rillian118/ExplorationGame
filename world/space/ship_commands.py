@@ -13,6 +13,11 @@ from world.surface.models import get_or_create_surface_room, get_surface_address
 from world.space.command_index import render_ship_command_index
 from world.space.ship_landing import land_current_ship
 from world.space.ship_takeoff import takeoff_current_ship
+from world.space.ship_interiors import (
+        ensure_ship_interiors,
+        get_ship_boarding_target,
+        render_ship_interior_summary,
+    )
 
 from .shipstate import (
     clear_current_ship_for_caller,
@@ -273,6 +278,7 @@ class CmdShip(Command):
                 return
 
             ship = create_ship(rest, owner=self.caller)
+            
             set_current_ship_for_caller(self.caller, ship)
             self.caller.msg(f"Created ship {_ship_display_name(ship)} ({ship.dbref}) and set it as your current ship.")
             return
@@ -365,11 +371,26 @@ class CmdShip(Command):
                 self.caller.msg(f"{_ship_display_name(ship)} is not landed at your current location.")
                 return
 
+            target = get_ship_boarding_target(ship, create=True)
+            if target is None:
+                self.caller.msg(f"{_ship_display_name(ship)} does not have a boarding target configured.")
+                return
+
             set_current_ship_for_caller(self.caller, ship)
-            self.caller.msg(
-                f"You board {_ship_display_name(ship)}. Ship interiors are not implemented yet, "
-                "so your current ship selection has been updated."
-            )
+            self.caller.msg(f"You board {_ship_display_name(ship)}.")
+            self.caller.move_to(target, quiet=False)
+            return
+        if subcmd == "interior":
+            if not _is_builder(self.caller):
+                self.caller.msg("You do not have permission to inspect ship interiors.")
+                return
+
+            ship = self._resolve_ship_or_current(rest)
+            if ship is None:
+                self.caller.msg("No current ship selected. Use 'ship interior <ship>' or 'ship board <ship>'.")
+                return
+
+            self.caller.msg(render_ship_interior_summary(ship, create=True))
             return
 
         self.caller.msg(
@@ -378,5 +399,7 @@ class CmdShip(Command):
             "ship setloc <ship> orbit <system>/<body>, "
             "ship setloc <ship> landed <system>/<body> <x> <y>, "
             "ship land <x> <y>, ship land <system>/<body> <x> <y>, "
+            "ship interior <ship>,"
             "ship disembark [ship], ship embark [ship], ship takeoff"
         )
+    

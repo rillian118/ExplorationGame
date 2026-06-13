@@ -37,6 +37,12 @@ SHIP_COMMAND_INDEX = [
         "lock": "cmd:perm(Builders)",
     },
     {
+        "access": "Builder",
+        "command": "ship interior [ship]",
+        "summary": "Create/inspect the prototype interior rooms for a ship.",
+        "lock": "cmd:perm(Builders)",
+    },
+    {
         "access": "All",
         "command": "ship",
         "summary": "Show this ship command index.",
