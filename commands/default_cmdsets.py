@@ -18,7 +18,7 @@ from evennia import default_cmds # type: ignore
 from world.space.cmdsets import SpaceCmdSet
 from world.surface.overlay_commands import SurfaceOverlayCmdSet
 from world.surface.cleanup_commands import CmdSurfaceCleanupSweep, CmdSurfaceCleanupHere
-
+from world.survey.commands import SurveyCmdSet
 
 class CharacterCmdSet(default_cmds.CharacterCmdSet):
     """
@@ -39,6 +39,7 @@ class CharacterCmdSet(default_cmds.CharacterCmdSet):
         #
         self.add(SpaceCmdSet())
         self.add(SurfaceOverlayCmdSet())
+        self.add(SurveyCmdSet())
         self.add(CmdSurfaceCleanupSweep())
         self.add(CmdSurfaceCleanupHere())
 
