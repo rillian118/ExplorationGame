@@ -23,7 +23,7 @@ from world.space.models import find_body, find_system_object, read_system_data
 from world.space.ship_access import ACTION_OPERATE, require_ship_access
 from world.space.shipstate import get_current_ship_for_caller, read_ship_location
 from world.survey.models import SCAN_TERRAIN, SurveyCoverage
-from world.survey.scan_reports import render_orbital_scan_report
+from world.survey.scan_reports import compact_tile_data, render_orbital_scan_report
 from world.survey.services import actor_owner_key, upsert_coverage_tile
 
 
@@ -118,7 +118,8 @@ def _scan_tile_data(system_data: dict[str, Any], body: dict[str, Any], x: int, y
     Build the stored data payload for a scanned tile.
 
     Prefer generated surface view data if available so the scan records terrain
-    details that match the room generator.
+    details that match the room generator. Normalize prose-only generator output
+    into compact fields for map and scan-report use.
     """
     try:
         from world.surface.generator import compose_surface_room
@@ -128,15 +129,21 @@ def _scan_tile_data(system_data: dict[str, Any], body: dict[str, Any], x: int, y
             view = view.to_dict()
 
         if isinstance(view, Mapping):
-            data = dict(view)
-            # Keep the coverage row compact enough for frequent use.
-            return {
-                "terrain": data.get("terrain_name") or data.get("terrain") or data.get("name"),
-                "elevation_m": data.get("elevation_m") or data.get("elevation"),
-                "temperature_k": data.get("temperature_k") or data.get("temperature"),
-                "radiation": data.get("radiation"),
-                "summary": data.get("description") or data.get("summary"),
+            generated = dict(view)
+            raw = {
+                "terrain": (
+                    generated.get("terrain_name")
+                    or generated.get("terrain")
+                    or generated.get("terrain_label")
+                    or generated.get("name")
+                ),
+                "elevation_m": generated.get("elevation_m") or generated.get("elevation"),
+                "temperature_k": generated.get("temperature_k") or generated.get("temperature"),
+                "radiation": generated.get("radiation"),
+                "gravity": generated.get("gravity"),
+                "summary": generated.get("description") or generated.get("summary") or generated.get("desc"),
             }
+            return compact_tile_data(raw)
     except Exception:
         pass
 

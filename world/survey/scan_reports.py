@@ -3,12 +3,25 @@ Survey scan report rendering.
 
 This module turns raw scan results into player-facing reports. The output is
 semantic first: useful for screen readers, and still useful for sighted players.
+
+Hotfix v0.1a:
+    - Avoid using full room descriptions as terrain labels.
+    - Parse compact terrain/elevation/temperature/radiation from generated
+      room summaries when discrete fields are missing.
 """
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from typing import Any
+
+
+TERRAIN_RE = re.compile(r"terrain here is\s+([^,.]+)", re.IGNORECASE)
+ELEVATION_RE = re.compile(r"elevation near\s+([0-9,]+(?:\.\d+)?)\s+meters", re.IGNORECASE)
+TEMP_K_RE = re.compile(r"([0-9]+(?:\.\d+)?)\s*K\b", re.IGNORECASE)
+RADIATION_RE = re.compile(r"radiation level\s+([0-9]+(?:\.\d+)?)", re.IGNORECASE)
+GRAVITY_RE = re.compile(r"([0-9]+(?:\.\d+)?)g\s+gravity", re.IGNORECASE)
 
 
 def _value(data: dict[str, Any], *keys: str):
@@ -20,12 +33,92 @@ def _value(data: dict[str, Any], *keys: str):
     return None
 
 
+def _summary_text(data: dict[str, Any]) -> str:
+    """Return descriptive summary text, if present."""
+    value = _value(data, "summary", "description", "desc")
+    return str(value or "")
+
+
+def parse_terrain_from_summary(summary: str) -> str | None:
+    """Extract compact terrain label from generated room prose."""
+    if not summary:
+        return None
+
+    match = TERRAIN_RE.search(summary)
+    if match:
+        return match.group(1).strip().lower()
+
+    return None
+
+
+def parse_number_from_summary(summary: str, pattern: re.Pattern[str]) -> float | None:
+    """Extract one numeric value from summary text."""
+    if not summary:
+        return None
+
+    match = pattern.search(summary)
+    if not match:
+        return None
+
+    try:
+        return float(match.group(1).replace(",", ""))
+    except Exception:
+        return None
+
+
+def compact_tile_data(data: dict[str, Any]) -> dict[str, Any]:
+    """
+    Return data with compact terrain/elevation/temp/radiation fields populated.
+
+    This is intentionally tolerant of older rows where only `summary` was stored.
+    """
+    compact = dict(data or {})
+    summary = _summary_text(compact)
+
+    terrain = _value(compact, "terrain", "terrain_name", "terrain_label", "name")
+    if not terrain:
+        terrain = parse_terrain_from_summary(summary)
+    if terrain:
+        compact["terrain"] = str(terrain).strip().lower()
+
+    if _value(compact, "elevation_m", "elevation") is None:
+        elevation = parse_number_from_summary(summary, ELEVATION_RE)
+        if elevation is not None:
+            compact["elevation_m"] = int(elevation) if elevation.is_integer() else elevation
+
+    if _value(compact, "temperature_k", "temperature") is None:
+        temp = parse_number_from_summary(summary, TEMP_K_RE)
+        if temp is not None:
+            compact["temperature_k"] = int(temp) if temp.is_integer() else temp
+
+    if compact.get("radiation") is None:
+        radiation = parse_number_from_summary(summary, RADIATION_RE)
+        if radiation is not None:
+            compact["radiation"] = radiation
+
+    if compact.get("gravity") is None:
+        gravity = parse_number_from_summary(summary, GRAVITY_RE)
+        if gravity is not None:
+            compact["gravity"] = gravity
+
+    return compact
+
+
 def _terrain_label(data: dict[str, Any]) -> str:
-    """Return normalized terrain label."""
-    terrain = _value(data, "terrain", "terrain_name", "name", "summary")
+    """Return normalized compact terrain label."""
+    compact = compact_tile_data(data)
+    terrain = _value(compact, "terrain", "terrain_name", "terrain_label", "name")
     if not terrain:
         return "unknown terrain"
-    return str(terrain)
+
+    terrain = str(terrain).strip()
+    if len(terrain) > 80:
+        parsed = parse_terrain_from_summary(terrain)
+        if parsed:
+            return parsed
+        return terrain[:77].rstrip() + "..."
+
+    return terrain.lower()
 
 
 def _float_or_none(value: Any) -> float | None:
@@ -81,7 +174,7 @@ def _numeric_extreme(records: list[dict[str, Any]], *keys: str, high: bool = Tru
     """Return record with numeric max/min for one of the provided keys."""
     candidates = []
     for record in records:
-        data = record.get("data") or {}
+        data = compact_tile_data(record.get("data") or {})
         value = _float_or_none(_value(data, *keys))
         if value is None:
             continue
@@ -191,7 +284,7 @@ def render_orbital_scan_report(
 
     hazard_records = []
     for record in records:
-        data = record.get("data") or {}
+        data = compact_tile_data(record.get("data") or {})
         if data.get("hazard") or data.get("hazards"):
             hazard_records.append(record)
 
