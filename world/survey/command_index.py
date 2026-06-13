@@ -38,6 +38,30 @@ SURVEY_COMMAND_INDEX = [
     },
     {
         "access": "All",
+        "command": "survey map",
+        "summary": "Show a compact visual survey map.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "survey map brief",
+        "summary": "Show a screen-reader-friendly semantic survey summary.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "survey map list",
+        "summary": "Show a directional tile list for screen readers.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "survey detail <x> <y>",
+        "summary": "Show focused survey information for one tile.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
         "command": "survey inspect <dataset id or cartridge>",
         "summary": "Inspect an owned dataset or a carried survey data cartridge.",
         "lock": "cmd:all()",

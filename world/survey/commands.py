@@ -14,6 +14,7 @@ from world.survey.dataset_objects import (
     render_cartridge_list,
     render_dataset_or_cartridge_detail,
 )
+from world.survey.map_readout import render_survey_detail, render_survey_map
 
 try:
     from world.survey.scanning import run_orbital_survey_scan
@@ -38,7 +39,12 @@ class CmdSurvey(Command):
       survey status
       survey datasets
       survey cartridges
-      survey inspect <dataset id|cartridge>
+      survey map
+      survey map visual
+      survey map brief
+      survey map list
+      survey detail <x> <y>
+      survey inspect <dataset id or cartridge>
       survey export <name>
       survey materialize <dataset id>
       survey load <cartridge>
@@ -67,6 +73,20 @@ class CmdSurvey(Command):
             caller.msg(run_orbital_survey_scan(caller))
             return
 
+        # Support both "survey map brief" and "survey map/brief".
+        if subcmd.startswith("map"):
+            map_args = rest
+            if "/" in subcmd:
+                _base, switch = subcmd.split("/", 1)
+                if switch:
+                    map_args = f"{switch} {rest}".strip()
+            caller.msg(render_survey_map(caller, map_args))
+            return
+
+        if subcmd == "detail":
+            caller.msg(render_survey_detail(caller, rest))
+            return
+
         try:
             owner_scope, owner_id = actor_owner_key(caller)
         except Exception as err:
@@ -87,7 +107,7 @@ class CmdSurvey(Command):
 
         if subcmd in ("inspect", "show", "info"):
             if not rest:
-                caller.msg("Usage: survey inspect <dataset id|cartridge>")
+                caller.msg("Usage: survey inspect <dataset id or cartridge>")
                 return
 
             caller.msg(
@@ -126,7 +146,8 @@ class CmdSurvey(Command):
 
         caller.msg(
             "Usage: survey, survey scan, survey status, survey datasets, "
-            "survey cartridges, survey inspect <id|cartridge>, "
+            "survey cartridges, survey map, survey map brief, survey map list, "
+            "survey detail <x> <y>, survey inspect <id or cartridge>, "
             "survey export <name>, survey materialize <dataset id>, "
             "survey load <cartridge>"
         )
