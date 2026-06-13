@@ -17,8 +17,9 @@ from world.survey.dataset_objects import (
 from world.survey.map_readout import render_survey_detail, render_survey_map
 
 try:
-    from world.survey.scanning import run_orbital_survey_scan
+    from world.survey.scanning import parse_scan_options, run_orbital_survey_scan
 except Exception:
+    parse_scan_options = None
     run_orbital_survey_scan = None
 
 from world.survey.services import (
@@ -36,6 +37,8 @@ class CmdSurvey(Command):
     Usage:
       survey
       survey scan
+      survey scan radius <0-3>
+      survey scan resolution <1-3>
       survey status
       survey datasets
       survey cartridges
@@ -67,10 +70,16 @@ class CmdSurvey(Command):
         rest = parts[1].strip() if len(parts) > 1 else ""
 
         if subcmd == "scan":
-            if run_orbital_survey_scan is None:
+            if run_orbital_survey_scan is None or parse_scan_options is None:
                 caller.msg("Survey scan is not installed.")
                 return
-            caller.msg(run_orbital_survey_scan(caller))
+
+            options, error = parse_scan_options(rest)
+            if error:
+                caller.msg(error)
+                return
+
+            caller.msg(run_orbital_survey_scan(caller, **options))
             return
 
         # Support both "survey map brief" and "survey map/brief".
@@ -145,7 +154,7 @@ class CmdSurvey(Command):
             return
 
         caller.msg(
-            "Usage: survey, survey scan, survey status, survey datasets, "
+            "Usage: survey, survey scan [radius <0-3>] [resolution <1-3>], survey status, survey datasets, "
             "survey cartridges, survey map, survey map brief, survey map list, "
             "survey detail <x> <y>, survey inspect <id or cartridge>, "
             "survey export <name>, survey materialize <dataset id>, "

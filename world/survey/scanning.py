@@ -6,7 +6,7 @@ v0.1 scope:
     - current ship must be in orbit
     - caller must have crew+/owner/admin access to operate the ship
     - scan writes mutable SurveyCoverage rows for the caller
-    - scan uses a deterministic 3x3 surface footprint
+    - scan uses a deterministic, capped square surface footprint
     - scan returns a semantic report suitable for screen-reader users
 
 This deliberately does not create SurveyDataset records directly. Datasets are
@@ -30,6 +30,8 @@ from world.survey.services import actor_owner_key, upsert_coverage_tile
 DEFAULT_SCAN_RADIUS = 1
 DEFAULT_SCAN_RESOLUTION = 1
 DEFAULT_SCAN_QUALITY = 100
+MAX_SCAN_RADIUS = 3
+MAX_SCAN_RESOLUTION = 3
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -159,6 +161,72 @@ def _scan_points(center_x: int, center_y: int, radius: int) -> list[tuple[int, i
     return points
 
 
+def _clamp_int(value: int, *, minimum: int, maximum: int) -> int:
+    """Clamp an integer to a supported range."""
+    return max(int(minimum), min(int(maximum), int(value)))
+
+
+def parse_scan_options(args: str) -> tuple[dict[str, int], str]:
+    """
+    Parse player-facing survey scan options.
+
+    Supported:
+        survey scan
+        survey scan radius 2
+        survey scan resolution 2
+        survey scan radius 2 resolution 2
+
+    Values are capped here as a prototype stand-in for future sensor equipment,
+    crew skill, power allocation, and environmental constraints.
+    """
+    tokens = (args or "").split()
+    options = {
+        "radius": DEFAULT_SCAN_RADIUS,
+        "resolution": DEFAULT_SCAN_RESOLUTION,
+    }
+
+    i = 0
+    while i < len(tokens):
+        token = tokens[i].lower()
+
+        if token in {"radius", "range"}:
+            if i + 1 >= len(tokens):
+                return options, "Usage: survey scan radius <0-3>"
+            try:
+                radius = int(tokens[i + 1])
+            except ValueError:
+                return options, "Scan radius must be a number."
+
+            if radius < 0:
+                return options, "Scan radius cannot be negative."
+
+            options["radius"] = _clamp_int(radius, minimum=0, maximum=MAX_SCAN_RADIUS)
+            i += 2
+            continue
+
+        if token in {"resolution", "res"}:
+            if i + 1 >= len(tokens):
+                return options, "Usage: survey scan resolution <1-3>"
+            try:
+                resolution = int(tokens[i + 1])
+            except ValueError:
+                return options, "Scan resolution must be a number."
+
+            if resolution < 1:
+                return options, "Scan resolution must be at least 1."
+
+            options["resolution"] = _clamp_int(resolution, minimum=1, maximum=MAX_SCAN_RESOLUTION)
+            i += 2
+            continue
+
+        return (
+            options,
+            "Usage: survey scan [radius <0-3>] [resolution <1-3>]",
+        )
+
+    return options, ""
+
+
 def _coverage_exists(owner_scope: str, owner_id: int, system_name: str, body_id: str, x: int, y: int, scan_type: str) -> bool:
     """Return whether a matching coverage row already exists."""
     return SurveyCoverage.objects.filter(
@@ -172,7 +240,12 @@ def _coverage_exists(owner_scope: str, owner_id: int, system_name: str, body_id:
     ).exists()
 
 
-def run_orbital_survey_scan(caller, *, radius: int = DEFAULT_SCAN_RADIUS) -> str:
+def run_orbital_survey_scan(
+    caller,
+    *,
+    radius: int = DEFAULT_SCAN_RADIUS,
+    resolution: int = DEFAULT_SCAN_RESOLUTION,
+) -> str:
     """
     Run an orbital terrain survey scan from caller's current ship.
 
@@ -211,7 +284,9 @@ def run_orbital_survey_scan(caller, *, radius: int = DEFAULT_SCAN_RADIUS) -> str
 
     owner_scope, owner_id = actor_owner_key(caller)
     center_x, center_y = _scan_center_from_state(str(system_name), str(body_id), state, body)
-    points = _scan_points(center_x, center_y, int(radius))
+    radius = _clamp_int(int(radius), minimum=0, maximum=MAX_SCAN_RADIUS)
+    resolution = _clamp_int(int(resolution), minimum=1, maximum=MAX_SCAN_RESOLUTION)
+    points = _scan_points(center_x, center_y, radius)
 
     records: list[dict[str, Any]] = []
     created_count = 0
@@ -233,6 +308,8 @@ def run_orbital_survey_scan(caller, *, radius: int = DEFAULT_SCAN_RADIUS) -> str
             {
                 "scan_method": "orbital_ship_survey",
                 "scan_center": {"x": center_x, "y": center_y},
+                "scan_radius": radius,
+                "scan_resolution": resolution,
                 "source_ship_name": _ship_name(ship),
             }
         )
@@ -246,7 +323,7 @@ def run_orbital_survey_scan(caller, *, radius: int = DEFAULT_SCAN_RADIUS) -> str
             x=int(x),
             y=int(y),
             scan_type=SCAN_TERRAIN,
-            resolution=DEFAULT_SCAN_RESOLUTION,
+            resolution=resolution,
             quality=DEFAULT_SCAN_QUALITY,
             source_ship_id=int(ship.id),
             data=data,
@@ -262,7 +339,7 @@ def run_orbital_survey_scan(caller, *, radius: int = DEFAULT_SCAN_RADIUS) -> str
                 "x": int(x),
                 "y": int(y),
                 "data": data,
-                "resolution": DEFAULT_SCAN_RESOLUTION,
+                "resolution": resolution,
                 "quality": DEFAULT_SCAN_QUALITY,
                 "existed": existed,
             }

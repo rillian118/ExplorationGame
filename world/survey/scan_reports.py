@@ -214,6 +214,8 @@ def render_orbital_scan_report(
     """
     total = len(records)
     terrain_counts = Counter(_terrain_label(record.get("data") or {}) for record in records)
+    resolutions = sorted({int(record.get("resolution") or 0) for record in records})
+    resolution_label = ", ".join(str(value) for value in resolutions if value) or "unknown"
 
     lines = [
         "Orbital terrain survey complete.",
@@ -221,6 +223,7 @@ def render_orbital_scan_report(
         f"Body: {body_name}",
         f"Scan center: {center_x},{center_y}",
         f"Scan footprint: radius {radius}, {total} tile(s)",
+        f"Scan resolution: {resolution_label}",
         f"Coverage update: {created_count} new, {updated_count} existing updated/merged.",
     ]
 

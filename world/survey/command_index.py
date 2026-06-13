@@ -20,6 +20,18 @@ SURVEY_COMMAND_INDEX = [
     },
     {
         "access": "All",
+        "command": "survey scan radius <0-3>",
+        "summary": "Run a capped wider orbital survey footprint.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "survey scan resolution <1-3>",
+        "summary": "Record the scan at a capped higher prototype resolution.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
         "command": "survey status",
         "summary": "Show your current survey coverage summary.",
         "lock": "cmd:all()",
