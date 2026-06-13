@@ -9,6 +9,7 @@ from evennia.commands.cmdset import CmdSet  # type: ignore
 
 from world.survey.command_index import render_survey_command_index
 from world.survey.dataset_objects import (
+    load_cartridge_into_coverage,
     materialize_dataset_cartridge,
     render_cartridge_list,
     render_dataset_or_cartridge_detail,
@@ -40,6 +41,7 @@ class CmdSurvey(Command):
       survey inspect <dataset id|cartridge>
       survey export <name>
       survey materialize <dataset id>
+      survey load <cartridge>
     """
 
     key = "survey"
@@ -118,10 +120,15 @@ class CmdSurvey(Command):
             caller.msg(materialize_dataset_cartridge(caller, int(rest.lstrip("#"))))
             return
 
+        if subcmd in ("load", "import"):
+            caller.msg(load_cartridge_into_coverage(caller, rest))
+            return
+
         caller.msg(
             "Usage: survey, survey scan, survey status, survey datasets, "
             "survey cartridges, survey inspect <id|cartridge>, "
-            "survey export <name>, survey materialize <dataset id>"
+            "survey export <name>, survey materialize <dataset id>, "
+            "survey load <cartridge>"
         )
 
 

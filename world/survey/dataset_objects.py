@@ -9,7 +9,11 @@ from typing import Any
 from evennia.utils.create import create_object  # type: ignore
 
 from world.survey.models import SurveyDataset
-from world.survey.services import actor_owner_key, render_dataset_detail
+from world.survey.services import (
+    actor_owner_key,
+    import_dataset_tiles_to_coverage,
+    render_dataset_detail,
+)
 
 
 SURVEY_CARTRIDGE_TYPECLASS = "world.survey.objects.SurveyDataCartridge"
@@ -53,11 +57,6 @@ def _set_attr(obj: Any, name: str, value: Any) -> None:
             setattr(obj.db, name, value)
         except Exception:
             pass
-
-
-def _ship_or_dataset_name(text: Any) -> str:
-    """Normalize generated object-name display."""
-    return str(text or "").strip()
 
 
 def get_cartridge_dataset_id(obj: Any) -> int | None:
@@ -351,3 +350,39 @@ def render_dataset_or_cartridge_detail(
         return f"No owned dataset or carried survey data cartridge matching '{query}' was found."
 
     return render_cartridge_detail(cartridge, looker=caller)
+
+
+def load_cartridge_into_coverage(caller: Any, query: str) -> str:
+    """
+    Load a carried survey data cartridge into caller's SurveyCoverage.
+
+    This imports dataset tile snapshots as mutable owner coverage. The cartridge
+    is not consumed.
+    """
+    query = (query or "").strip()
+    if not query:
+        return "Usage: survey load <cartridge>"
+
+    cartridge = find_inventory_cartridge(caller, query)
+    if cartridge is None:
+        return f"You are not carrying a survey data cartridge matching '{query}'."
+
+    dataset = get_dataset_for_cartridge(cartridge)
+    if dataset is None:
+        dataset_id = get_cartridge_dataset_id(cartridge)
+        return f"That cartridge references missing survey dataset #{dataset_id}."
+
+    owner_scope, owner_id = actor_owner_key(caller)
+    result = import_dataset_tiles_to_coverage(
+        dataset=dataset,
+        owner_scope=owner_scope,
+        owner_id=int(owner_id),
+        source_object_id=getattr(cartridge, "id", None),
+    )
+
+    return (
+        f"Loaded survey dataset #{result['dataset_id']}: {result['dataset_name']} "
+        f"from {getattr(cartridge, 'key', 'survey data cartridge')}. "
+        f"{result['tile_count']} tiles processed "
+        f"({result['created']} new, {result['updated']} existing updated/merged)."
+    )

@@ -54,6 +54,12 @@ SURVEY_COMMAND_INDEX = [
         "summary": "Create a physical survey data cartridge for an owned dataset.",
         "lock": "cmd:all()",
     },
+    {
+        "access": "All",
+        "command": "survey load <cartridge>",
+        "summary": "Import a carried survey data cartridge into your survey coverage.",
+        "lock": "cmd:all()",
+    },
 ]
 
 

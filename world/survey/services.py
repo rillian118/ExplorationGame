@@ -184,6 +184,10 @@ def upsert_coverage_tile(
             obj.source_ship_id = source_ship_id
             changed = True
 
+        if source_object_id and obj.source_object_id != source_object_id:
+            obj.source_object_id = source_object_id
+            changed = True
+
         if changed:
             obj.save()
 
@@ -269,6 +273,84 @@ def export_dataset_from_coverage(
 
     SurveyDatasetTile.objects.bulk_create(tiles)
     return dataset
+
+
+@transaction.atomic
+def import_dataset_tiles_to_coverage(
+    *,
+    dataset: SurveyDataset,
+    owner_scope: str,
+    owner_id: int,
+    source_object_id: int | None = None,
+) -> dict[str, Any]:
+    """
+    Import a packaged dataset into an owner's mutable SurveyCoverage.
+
+    This is the core "load cartridge" operation. It does not alter or consume
+    the SurveyDataset, and it does not require the digital dataset owner to be
+    the importing actor. Possession/access should be checked by the caller.
+
+    Existing coverage rows are improved/merged by `upsert_coverage_tile`.
+    """
+    tiles = list(dataset.tiles.all().order_by("system_name", "body_id", "scan_type", "x", "y"))
+
+    created = 0
+    updated = 0
+    unchanged_or_merged = 0
+
+    for tile in tiles:
+        existed = SurveyCoverage.objects.filter(
+            owner_scope=owner_scope,
+            owner_id=int(owner_id),
+            system_name=tile.system_name,
+            body_id=tile.body_id,
+            x=int(tile.x),
+            y=int(tile.y),
+            scan_type=tile.scan_type,
+        ).exists()
+
+        data = dict(tile.data or {})
+        data.update(
+            {
+                "loaded_from_dataset_id": int(dataset.id),
+                "loaded_from_dataset_name": dataset.name,
+                "loaded_from_cartridge_object_id": source_object_id,
+                "loaded_via": "survey_data_cartridge",
+            }
+        )
+
+        upsert_coverage_tile(
+            owner_scope=owner_scope,
+            owner_id=int(owner_id),
+            system_name=tile.system_name,
+            body_id=tile.body_id,
+            body_name=tile.body_name or dataset.body_name or "",
+            x=int(tile.x),
+            y=int(tile.y),
+            scan_type=tile.scan_type,
+            resolution=int(tile.resolution or 0),
+            quality=int(tile.quality or 0),
+            source_ship_id=dataset.source_ship_id,
+            source_object_id=source_object_id,
+            data=data,
+        )
+
+        if existed:
+            updated += 1
+        else:
+            created += 1
+
+    # Kept as a separate field for future richer diffing.
+    unchanged_or_merged = updated
+
+    return {
+        "dataset_id": int(dataset.id),
+        "dataset_name": dataset.name,
+        "tile_count": len(tiles),
+        "created": created,
+        "updated": updated,
+        "merged": unchanged_or_merged,
+    }
 
 
 def render_dataset_list(owner_scope: str, owner_id: int) -> str:
