@@ -199,6 +199,9 @@ def render_orbital_scan_report(
     created_count: int,
     updated_count: int,
     limit_notes: list[str] | None = None,
+    title: str = "Orbital terrain survey complete.",
+    footprint_label: str | None = None,
+    detail_lines: list[str] | None = None,
 ) -> str:
     """
     Render a semantic orbital scan report.
@@ -221,15 +224,18 @@ def render_orbital_scan_report(
     quality_label = ", ".join(str(value) for value in qualities if value) or "unknown"
 
     lines = [
-        "Orbital terrain survey complete.",
+        title,
         f"Ship: {ship_name}",
         f"Body: {body_name}",
         f"Scan center: {center_x},{center_y}",
-        f"Scan footprint: radius {radius}, {total} tile(s)",
+        footprint_label or f"Scan footprint: radius {radius}, {total} tile(s)",
         f"Scan resolution: {resolution_label}",
         f"Scan quality: {quality_label}",
         f"Coverage update: {created_count} new, {updated_count} existing updated/merged.",
     ]
+
+    if detail_lines:
+        lines.extend(detail_lines)
 
     if limit_notes:
         lines.append(f"Scan limits applied: {'; '.join(limit_notes)}.")
