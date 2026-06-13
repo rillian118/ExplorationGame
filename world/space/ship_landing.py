@@ -23,6 +23,7 @@ from world.space.shipstate import (
     set_ship_landed,
 )
 from world.surface.models import get_or_create_surface_room
+from world.space.ship_access import ACTION_LAND, require_ship_access
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -151,6 +152,10 @@ def land_current_ship(caller: Any, args: str) -> str:
 
     system_name, body_query, x, y, error = _parse_land_args(ship, args)
     if error:
+        return error
+    
+    allowed, error = require_ship_access(caller, ship, ACTION_LAND)
+    if not allowed:
         return error
 
     try:

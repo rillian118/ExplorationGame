@@ -25,7 +25,7 @@ from __future__ import annotations
 from typing import Any
 
 from evennia.objects.models import ObjectDB  # type: ignore
-from evennia.utils.create import create_object
+from evennia.utils.create import create_object # type: ignore
 
 
 SHIP_INTERIOR_TAG = "ship_interior"

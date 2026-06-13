@@ -30,6 +30,7 @@ from world.space.shipstate import (
 from world.surface.models import get_or_create_surface_room
 from world.surface.overlays import remove_landed_ship_overlay
 from world.surface.room_events import announce_surface_event, describe_ship_takeoff
+from world.space.ship_access import ACTION_TAKEOFF, require_ship_access
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -90,6 +91,10 @@ def takeoff_current_ship(caller) -> str:
     ship = get_current_ship_for_caller(caller)
     if ship is None:
         return "No current ship selected. Use 'ship board <ship>' first."
+    
+    allowed, error = require_ship_access(caller, ship, ACTION_TAKEOFF)
+    if not allowed:
+        return error
 
     ship_name = _ship_display_name(ship)
     state = read_ship_location(ship) or {}

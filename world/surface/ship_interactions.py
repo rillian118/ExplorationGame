@@ -22,6 +22,7 @@ from evennia.objects.models import ObjectDB  # type: ignore
 from world.surface.models import SurfaceOverlay, get_surface_address, is_surface_room
 from world.surface.overlays import get_surface_overlays, remove_landed_ship_overlay
 from world.surface.room_events import announce_surface_event, describe_ship_takeoff
+from world.space.ship_access import ACTION_BOARD, require_ship_access
 
 
 LANDING_OVERLAY_TYPE = "landed_ship_anchor"
@@ -293,7 +294,10 @@ def board_landed_ship(caller, query: str) -> str:
     ship = _ship_from_overlay(overlay)
     if ship is None:
         return f"Landed ship overlay #{overlay.id} no longer resolves to a ship object."
-
+    
+    allowed, error = require_ship_access(caller, ship, ACTION_BOARD)
+    if not allowed:
+        return error
     try:
         from world.space.ship_interiors import get_ship_boarding_target
         from world.space.shipstate import set_current_ship_for_caller

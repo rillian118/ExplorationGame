@@ -102,6 +102,24 @@ SHIP_COMMAND_INDEX = [
         "summary": "Select a landed ship at your current surface tile.",
         "lock": "cmd:all()",
     },
+    {
+        "access": "All",
+        "command": "ship access",
+        "summary": "Show the access roster for your current ship.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "ship access add <player> <owner|crew|passenger>",
+        "summary": "Owner/admin: grant ship access.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "ship access remove <player>",
+        "summary": "Owner/admin: remove ship access.",
+        "lock": "cmd:all()",
+    },
 ]
 
 _ACCESS_ORDER = ["Builder", "All"]

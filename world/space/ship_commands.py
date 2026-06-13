@@ -18,6 +18,16 @@ from world.space.ship_interiors import (
         get_ship_boarding_target,
         render_ship_interior_summary,
     )
+from world.space.ship_access import (
+        ACTION_BOARD,
+        ACTION_DISEMBARK,
+        ACTION_INTERIOR,
+        ACTION_LAND,
+        ACTION_TAKEOFF,
+        ensure_ship_access,
+        handle_ship_access_command,
+        require_ship_access,
+    )
 
 from .shipstate import (
     clear_current_ship_for_caller,
@@ -246,6 +256,14 @@ class CmdShip(Command):
             return
             
         if subcmd == "land":
+            ship = get_current_ship_for_caller(self.caller)
+            if ship is None:
+                self.caller.msg("No current ship selected. Use 'ship board <ship>' first.")
+                return
+            allowed, error = require_ship_access(self.caller, ship, ACTION_LAND)
+            if not allowed:
+                self.caller.msg(error)
+                return
             self.caller.msg(land_current_ship(self.caller, rest))
             return
 
@@ -258,7 +276,12 @@ class CmdShip(Command):
             if ship is None:
                 self.caller.msg(f"No ship named '{rest}' was found.")
                 return
-
+            
+            allowed, error = require_ship_access(self.caller, ship, ACTION_BOARD)
+            if not allowed:
+                self.caller.msg(error)
+                return
+            
             set_current_ship_for_caller(self.caller, ship)
             self.caller.msg(f"Current ship set to {_ship_display_name(ship)} ({ship.dbref}).")
             return
@@ -278,6 +301,7 @@ class CmdShip(Command):
                 return
 
             ship = create_ship(rest, owner=self.caller)
+            ensure_ship_access(ship, owner=self.caller)
             
             set_current_ship_for_caller(self.caller, ship)
             self.caller.msg(f"Created ship {_ship_display_name(ship)} ({ship.dbref}) and set it as your current ship.")
@@ -336,15 +360,32 @@ class CmdShip(Command):
                 f"system={state.get('system')} body={body_label}{coord_label}."
             )
             return
+        
         if subcmd == "takeoff":
+            ship = get_current_ship_for_caller(self.caller)
+            if ship is None:
+                self.caller.msg("No current ship selected. Use 'ship board <ship>' first.")
+                return
+            
+            allowed, error = require_ship_access(self.caller, ship, ACTION_TAKEOFF)
+            if not allowed:
+                self.caller.msg(error)
+                return
+            
             self.caller.msg(takeoff_current_ship(self.caller))
             return
+            
         if subcmd == "disembark":
             ship = self._resolve_ship_or_current(rest)
             if ship is None:
                 self.caller.msg("No current ship selected. Use 'ship disembark <ship>' or 'ship board <ship>'.")
                 return
-
+            
+            allowed, error = require_ship_access(self.caller, ship, ACTION_DISEMBARK)
+            if not allowed:
+                self.caller.msg(error)
+                return
+            
             try:
                 room = _resolve_landed_ship_surface(ship)
             except Exception as err:
@@ -370,6 +411,11 @@ class CmdShip(Command):
             if not _ship_matches_current_surface(ship, self.caller.location):
                 self.caller.msg(f"{_ship_display_name(ship)} is not landed at your current location.")
                 return
+            
+            allowed, error = require_ship_access(self.caller, ship, ACTION_BOARD)
+            if not allowed:
+                self.caller.msg(error)
+                return
 
             target = get_ship_boarding_target(ship, create=True)
             if target is None:
@@ -380,26 +426,35 @@ class CmdShip(Command):
             self.caller.msg(f"You board {_ship_display_name(ship)}.")
             self.caller.move_to(target, quiet=False)
             return
+        
         if subcmd == "interior":
-            if not _is_builder(self.caller):
-                self.caller.msg("You do not have permission to inspect ship interiors.")
-                return
 
             ship = self._resolve_ship_or_current(rest)
             if ship is None:
                 self.caller.msg("No current ship selected. Use 'ship interior <ship>' or 'ship board <ship>'.")
                 return
+            
+            allowed, error = require_ship_access(self.caller, ship, ACTION_INTERIOR)
+            if not allowed and not _is_builder(self.caller):
+                self.caller.msg(error)
+                return
 
             self.caller.msg(render_ship_interior_summary(ship, create=True))
             return
+        
+        if subcmd == "access":
+            ship = get_current_ship_for_caller(self.caller)
+            self.caller.msg(handle_ship_access_command(self.caller, ship, rest))
+            return
 
         self.caller.msg(
-            "Usage: ship, ship status [ship], ship list, ship board <ship>, ship leave,"
+            "Usage: ship, ship status [ship], ship list, ship board <ship>, ship leave, "
             "ship leave, ship create <name>, ship setloc <ship> system <system>, "
             "ship setloc <ship> orbit <system>/<body>, "
             "ship setloc <ship> landed <system>/<body> <x> <y>, "
             "ship land <x> <y>, ship land <system>/<body> <x> <y>, "
-            "ship interior <ship>,"
-            "ship disembark [ship], ship embark [ship], ship takeoff"
+            "ship interior <ship>, "
+            "ship disembark <ship>, ship embark <ship>, ship takeoff, "
+            "ship access, ship access add <player> <role>, ship access remove <player>"
         )
     
