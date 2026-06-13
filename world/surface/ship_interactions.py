@@ -192,12 +192,21 @@ def takeoff_landed_ship(caller, query: str) -> str:
 
         old_state = read_ship_location(ship) or {}
         state = dict(old_state)
-        state["mode"] = "space"
+        old_coordinates = dict(state.get("coordinates") or {})
+        state["mode"] = "orbiting"
         state["system"] = system_name or state.get("system")
         state["body_id"] = body_id or state.get("body_id")
         state["body_name"] = body_name or state.get("body_name")
-        state["last_surface_coordinates"] = dict(state.get("coordinates") or {})
-        state["coordinates"] = state.get("space_coordinates") or {}
+        state["last_surface_coordinates"] = old_coordinates
+        state["coordinates"] = None
+        state["site_id"] = None
+        state["dock_id"] = None
+        state["notes"] = [
+            f"Ship has taken off from surface coordinates "
+            f"{old_coordinates.get('x')}, {old_coordinates.get('y')} "
+            f"and is in orbit around {state.get('body_name') or state.get('body_id')}."
+        ]
+        
         write_ship_location(ship, state)
     except Exception:
         # Do not leave a landed overlay behind if the command's purpose is to
