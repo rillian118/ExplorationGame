@@ -7,6 +7,7 @@ v0.1 scope:
     - caller must have crew+/owner/admin access to operate the ship
     - scan writes mutable SurveyCoverage rows for the caller
     - scan uses a deterministic 3x3 surface footprint
+    - scan returns a semantic report suitable for screen-reader users
 
 This deliberately does not create SurveyDataset records directly. Datasets are
 still exported/snapshotted with `survey export <name>`.
@@ -21,7 +22,8 @@ from typing import Any
 from world.space.models import find_body, find_system_object, read_system_data
 from world.space.ship_access import ACTION_OPERATE, require_ship_access
 from world.space.shipstate import get_current_ship_for_caller, read_ship_location
-from world.survey.models import SCAN_TERRAIN
+from world.survey.models import SCAN_TERRAIN, SurveyCoverage
+from world.survey.scan_reports import render_orbital_scan_report
 from world.survey.services import actor_owner_key, upsert_coverage_tile
 
 
@@ -104,18 +106,7 @@ def _scan_center_from_state(system_name: str, body_id: str, state: dict[str, Any
 def _surface_tile_payload(body: dict[str, Any], x: int, y: int) -> dict[str, Any]:
     """
     Return lightweight deterministic tile payload for survey coverage.
-
-    This uses the existing surface generator when available and falls back to a
-    minimal payload otherwise.
     """
-    try:
-        from world.surface.generator import compose_surface_room
-
-        # compose_surface_room needs full system_data too, so this fallback is
-        # intentionally handled by caller where system_data is available.
-    except Exception:
-        pass
-
     return {
         "x": int(x),
         "y": int(y),
@@ -161,11 +152,24 @@ def _scan_points(center_x: int, center_y: int, radius: int) -> list[tuple[int, i
     return points
 
 
+def _coverage_exists(owner_scope: str, owner_id: int, system_name: str, body_id: str, x: int, y: int, scan_type: str) -> bool:
+    """Return whether a matching coverage row already exists."""
+    return SurveyCoverage.objects.filter(
+        owner_scope=owner_scope,
+        owner_id=int(owner_id),
+        system_name=str(system_name),
+        body_id=str(body_id),
+        x=int(x),
+        y=int(y),
+        scan_type=str(scan_type),
+    ).exists()
+
+
 def run_orbital_survey_scan(caller, *, radius: int = DEFAULT_SCAN_RADIUS) -> str:
     """
     Run an orbital terrain survey scan from caller's current ship.
 
-    Returns a user-facing status message.
+    Returns a user-facing semantic scan report.
     """
     ship = get_current_ship_for_caller(caller)
     if ship is None:
@@ -202,8 +206,21 @@ def run_orbital_survey_scan(caller, *, radius: int = DEFAULT_SCAN_RADIUS) -> str
     center_x, center_y = _scan_center_from_state(str(system_name), str(body_id), state, body)
     points = _scan_points(center_x, center_y, int(radius))
 
-    created_or_updated = 0
+    records: list[dict[str, Any]] = []
+    created_count = 0
+    updated_count = 0
+
     for x, y in points:
+        existed = _coverage_exists(
+            owner_scope,
+            owner_id,
+            str(system_name),
+            str(body_id),
+            int(x),
+            int(y),
+            SCAN_TERRAIN,
+        )
+
         data = _scan_tile_data(system_data, body, int(x), int(y))
         data.update(
             {
@@ -227,10 +244,30 @@ def run_orbital_survey_scan(caller, *, radius: int = DEFAULT_SCAN_RADIUS) -> str
             source_ship_id=int(ship.id),
             data=data,
         )
-        created_or_updated += 1
 
-    return (
-        f"{_ship_name(ship)} completes an orbital terrain survey of "
-        f"{body_name} centered on ({center_x}, {center_y}). "
-        f"{created_or_updated} tiles recorded."
+        if existed:
+            updated_count += 1
+        else:
+            created_count += 1
+
+        records.append(
+            {
+                "x": int(x),
+                "y": int(y),
+                "data": data,
+                "resolution": DEFAULT_SCAN_RESOLUTION,
+                "quality": DEFAULT_SCAN_QUALITY,
+                "existed": existed,
+            }
+        )
+
+    return render_orbital_scan_report(
+        ship_name=_ship_name(ship),
+        body_name=str(body_name or body_id),
+        center_x=center_x,
+        center_y=center_y,
+        radius=int(radius),
+        records=records,
+        created_count=created_count,
+        updated_count=updated_count,
     )
