@@ -27,19 +27,31 @@ SURVEY_COMMAND_INDEX = [
     {
         "access": "All",
         "command": "survey datasets",
-        "summary": "List survey datasets you own.",
+        "summary": "List survey datasets you own digitally.",
         "lock": "cmd:all()",
     },
     {
         "access": "All",
-        "command": "survey inspect <dataset id>",
-        "summary": "Inspect one owned survey dataset.",
+        "command": "survey cartridges",
+        "summary": "List survey data cartridges you are carrying.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "survey inspect <dataset id|cartridge>",
+        "summary": "Inspect an owned dataset or a carried survey data cartridge.",
         "lock": "cmd:all()",
     },
     {
         "access": "All",
         "command": "survey export <name>",
         "summary": "Package your current coverage into a tradable dataset.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "survey materialize <dataset id>",
+        "summary": "Create a physical survey data cartridge for an owned dataset.",
         "lock": "cmd:all()",
     },
 ]
