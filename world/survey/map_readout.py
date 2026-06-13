@@ -20,6 +20,7 @@ from typing import Any
 
 from world.survey.models import SurveyCoverage
 from world.survey.services import actor_owner_key
+from world.player.preferences import get_player_preference
 
 
 DEFAULT_MAP_RADIUS = 2
@@ -229,7 +230,8 @@ def _parse_map_args(args: str) -> dict[str, Any]:
     """
     tokens = (args or "").split()
     result = {
-        "mode": "visual",
+        "mode": None,
+        "explicit_mode": False,
         "center_x": None,
         "center_y": None,
         "radius": DEFAULT_MAP_RADIUS,
@@ -243,6 +245,7 @@ def _parse_map_args(args: str) -> dict[str, Any]:
 
         if token in {"visual", "brief", "list", "semantic"}:
             result["mode"] = "brief" if token == "semantic" else token
+            result["explicit_mode"] = True
             i += 1
             continue
 
@@ -643,6 +646,8 @@ def render_survey_map(caller: Any, args: str = "") -> str:
         return "No survey coverage recorded yet."
 
     mode = parsed["mode"]
+    if not parsed.get("explicit_mode"):
+        mode = get_player_preference(caller, "survey_map", default="visual")
     if mode == "brief":
         return render_survey_map_brief(view)
 
