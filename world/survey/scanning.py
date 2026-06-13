@@ -570,9 +570,12 @@ def _start_band_timer(caller: Any, interval: int) -> str:
     _stop_band_timer(caller)
 
     try:
-        script = caller.scripts.add(
+        from evennia.utils.create import create_script  # type: ignore
+
+        script = create_script(
             SURVEY_BAND_SCRIPT_PATH,
             key=SURVEY_BAND_SCRIPT_KEY,
+            obj=caller,
             interval=int(interval),
             start_delay=True,
             persistent=True,
