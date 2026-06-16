@@ -32,8 +32,8 @@ PREFERENCE_SPECS: dict[str, PlayerPreferenceSpec] = {
         valid_values=("visual", "brief", "list"),
         description=(
             "Default renderer for survey map when no explicit map mode is given. "
-            "Use visual for compact ASCII, brief for semantic summaries, or list "
-            "for directional tile readouts."
+            "Use visual for ANSI terrain maps and scan footprints, brief for "
+            "semantic summaries, or list for directional tile readouts."
         ),
     ),
 }

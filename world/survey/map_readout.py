@@ -4,7 +4,7 @@ Accessible survey map/readout renderers.
 The survey map system deliberately separates data selection from presentation.
 
 The same SurveyCoverage rows can be rendered as:
-    - visual: compact ASCII/spatial map
+    - visual: compact ANSI/spatial map
     - brief: semantic screen-reader-friendly summary
     - list: directional/tile list
     - detail: focused tile report
@@ -18,6 +18,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
+from world.survey.map_styles import render_visual_legend, terrain_label_from_data, tile_symbol
 from world.survey.models import SurveyCoverage
 from world.survey.services import actor_owner_key
 from world.player.preferences import get_player_preference
@@ -25,24 +26,6 @@ from world.player.preferences import get_player_preference
 
 DEFAULT_MAP_RADIUS = 2
 MAX_MAP_RADIUS = 8
-
-
-TERRAIN_SYMBOLS = {
-    "dusty": "d",
-    "plain": ".",
-    "open": ".",
-    "ridge": "^",
-    "highland": "^",
-    "mountain": "^",
-    "crater": "o",
-    "basin": "_",
-    "flow": "~",
-    "lava": "~",
-    "molten": "~",
-    "ice": "*",
-    "water": "~",
-    "unknown": "?",
-}
 
 
 @dataclass
@@ -329,37 +312,17 @@ def _tile_terrain(row: SurveyCoverage | None) -> str:
     if row is None:
         return "unknown"
 
-    data = row.data or {}
-    terrain = (
-        data.get("terrain")
-        or data.get("terrain_name")
-        or data.get("name")
-        or data.get("summary")
-        or row.scan_type
-        or "known terrain"
-    )
-    return str(terrain)
+    return terrain_label_from_data(row.data or {}, fallback=row.scan_type or "known terrain")
 
 
 def _tile_symbol(row: SurveyCoverage | None, *, is_center: bool = False) -> str:
     """Return visual map symbol for a tile."""
-    if is_center:
-        return "S"
-
-    if row is None:
-        return "?"
-
-    terrain = _tile_terrain(row).lower()
-    data = row.data or {}
-
-    if data.get("hazard") or data.get("hazards"):
-        return "!"
-
-    for key, symbol in TERRAIN_SYMBOLS.items():
-        if key in terrain:
-            return symbol
-
-    return "."
+    return tile_symbol(
+        row.data if row is not None else None,
+        terrain_label=_tile_terrain(row) if row is not None else None,
+        is_center=is_center,
+        is_unknown=row is None,
+    )
 
 
 def _terrain_counts(view: SurveyMapView) -> Counter:
@@ -415,32 +378,36 @@ def _direction_from_center(view: SurveyMapView, x: int, y: int) -> str:
 
 def render_survey_map_visual(view: SurveyMapView) -> str:
     """Render compact visual map."""
+    x_min = view.center_x - view.radius
+    x_max = view.center_x + view.radius
+    y_min = view.center_y - view.radius
+    y_max = view.center_y + view.radius
+    x_axis = " ".join(str(x % 10) for x in range(x_min, x_max + 1))
+
     lines = [
-        f"Survey Map: {view.system_name}/{view.body_name}",
+        f"|wSurvey Map:|n {view.system_name}/{view.body_name}",
         f"Center: {view.center_x},{view.center_y}   Radius: {view.radius}",
         f"Known: {view.known_count} of {view.requested_count} tiles",
         "",
+        f"   x: {x_axis}",
     ]
 
-    for y in range(view.center_y - view.radius, view.center_y + view.radius + 1):
+    for y in range(y_min, y_max + 1):
         chars = []
-        for x in range(view.center_x - view.radius, view.center_x + view.radius + 1):
-            chars.append(_tile_symbol(view.tiles.get((x, y)), is_center=(x == view.center_x and y == view.center_y)))
-        lines.append("".join(chars))
+        for x in range(x_min, x_max + 1):
+            chars.append(
+                _tile_symbol(
+                    view.tiles.get((x, y)),
+                    is_center=(x == view.center_x and y == view.center_y),
+                )
+            )
+        lines.append(f"{y:>4}: " + " ".join(chars))
 
     lines.extend(
         [
             "",
-            "Legend:",
-            "  S reference point",
-            "  ? unsurveyed",
-            "  . open or plain terrain",
-            "  d dusty terrain",
-            "  ^ ridge or high ground",
-            "  o crater",
-            "  _ basin",
-            "  ~ liquid, flow, molten, or water terrain",
-            "  ! known hazard",
+            render_visual_legend(),
+            "Axis labels show coordinate ones digits.",
             "",
             "Screen-reader alternatives: survey map brief, survey map list, survey detail <x> <y>",
         ]

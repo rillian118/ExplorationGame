@@ -8,6 +8,7 @@ move items forward as they are implemented, tested, or superseded.
 - [x] Pull and smoke-test the ship sensor package feature on the server.
 - [x] Verify `ship sensors packages`, `ship sensors install`, and `ship capabilities clear` in-game.
 - [x] Verify survey radius/resolution caps respond to installed sensor packages.
+- [x] Add first-pass ANSI survey map and scan-footprint visualization.
 
 ## Next
 
@@ -25,6 +26,7 @@ move items forward as they are implemented, tested, or superseded.
 - [ ] Add screen-reader verbosity settings.
 - [ ] Add ANSI/color preference.
 - [ ] Add room description verbosity preference.
+- [ ] Integrate survey visuals with planet-generation map layers and palettes where practical.
 - [ ] Expand ship interiors beyond the canonical airlock.
 - [ ] Add sensor effects from damage, power allocation, crew skill, and environment.
 - [ ] Make ship survey datasets extend to crew access where appropriate.

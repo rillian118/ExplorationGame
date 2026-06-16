@@ -93,7 +93,7 @@ SURVEY_COMMAND_INDEX = [
     {
         "access": "All",
         "command": "survey map",
-        "summary": "Show a compact visual survey map.",
+        "summary": "Show an ANSI terrain survey map when visual mode is enabled.",
         "lock": "cmd:all()",
     },
     {

@@ -22,6 +22,7 @@ import time
 from collections.abc import Mapping
 from typing import Any
 
+from world.player.preferences import get_player_preference
 from world.space.models import find_body, find_system_object, read_system_data
 from world.space.ship_capabilities import (
     CAP_SENSOR_QUALITY,
@@ -184,6 +185,14 @@ def _scan_points(center_x: int, center_y: int, radius: int) -> list[tuple[int, i
 def _clamp_int(value: int, *, minimum: int, maximum: int) -> int:
     """Clamp an integer to a supported range."""
     return max(int(minimum), min(int(maximum), int(value)))
+
+
+def _include_visual_scan_footprint(caller: Any) -> bool:
+    """Return whether scan reports should include the visual footprint."""
+    try:
+        return get_player_preference(caller, "survey_map", default="visual") == "visual"
+    except Exception:
+        return True
 
 
 def parse_scan_options(args: str) -> tuple[dict[str, Any], str]:
@@ -726,6 +735,7 @@ def run_orbital_survey_scan(
         created_count=created_count,
         updated_count=updated_count,
         limit_notes=limit_notes,
+        include_visual=_include_visual_scan_footprint(caller),
     )
 
 
@@ -912,6 +922,7 @@ def _perform_orbital_band_step(caller: Any, *, from_timer: bool = False) -> tupl
             f"radius {radius}, {len(records)} tile(s)"
         ),
         detail_lines=[progress_line, next_line],
+        include_visual=_include_visual_scan_footprint(caller),
     )
     return report, not is_complete
 

@@ -16,6 +16,8 @@ import re
 from collections import Counter
 from typing import Any
 
+from world.survey.map_styles import render_visual_legend, tile_symbol
+
 
 TERRAIN_RE = re.compile(r"terrain here is\s+([^,.]+)", re.IGNORECASE)
 ELEVATION_RE = re.compile(r"elevation near\s+([0-9,]+(?:\.\d+)?)\s+meters", re.IGNORECASE)
@@ -188,6 +190,50 @@ def _numeric_extreme(records: list[dict[str, Any]], *keys: str, high: bool = Tru
     return candidates[-1] if high else candidates[0]
 
 
+def render_scan_footprint_visual(
+    *,
+    center_x: int,
+    center_y: int,
+    radius: int,
+    records: list[dict[str, Any]],
+) -> str:
+    """Render a compact colored visual of the just-scanned footprint."""
+    if not records:
+        return ""
+
+    record_by_coord = {(int(record["x"]), int(record["y"])): record for record in records}
+    x_values = [x for x, _y in record_by_coord]
+    y_values = [y for _x, y in record_by_coord]
+    x_min = min(x_values)
+    x_max = max(x_values)
+    y_min = min(y_values)
+    y_max = max(y_values)
+    x_axis = " ".join(str(x % 10) for x in range(x_min, x_max + 1))
+
+    lines = [
+        "Scan footprint visual:",
+        f"Center: {center_x},{center_y}   Radius: {radius}",
+        f"   x: {x_axis}",
+    ]
+
+    for y in range(y_min, y_max + 1):
+        chars = []
+        for x in range(x_min, x_max + 1):
+            record = record_by_coord.get((x, y))
+            chars.append(
+                tile_symbol(
+                    record.get("data") if record else None,
+                    is_center=(x == center_x and y == center_y),
+                    is_unknown=record is None,
+                    is_new=bool(record and not record.get("existed")),
+                )
+            )
+        lines.append(f"{y:>4}: " + " ".join(chars))
+
+    lines.append(render_visual_legend(include_scan_changes=True))
+    return "\n".join(lines)
+
+
 def render_orbital_scan_report(
     *,
     ship_name: str,
@@ -202,6 +248,7 @@ def render_orbital_scan_report(
     title: str = "Orbital terrain survey complete.",
     footprint_label: str | None = None,
     detail_lines: list[str] | None = None,
+    include_visual: bool = False,
 ) -> str:
     """
     Render a semantic orbital scan report.
@@ -239,6 +286,17 @@ def render_orbital_scan_report(
 
     if limit_notes:
         lines.append(f"Scan limits applied: {'; '.join(limit_notes)}.")
+
+    if include_visual:
+        visual = render_scan_footprint_visual(
+            center_x=center_x,
+            center_y=center_y,
+            radius=radius,
+            records=records,
+        )
+        if visual:
+            lines.append("")
+            lines.append(visual)
 
     if terrain_counts:
         lines.append("")
