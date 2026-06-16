@@ -62,6 +62,12 @@ nosetests.xml
 
 # VSCode config
 .vscode
+
+# Generated world/system artifacts
+*.ansi
+WorldGen V0.01a/*_preview.txt
+WorldGen V0.01a/renders/
+systemgen/exports/
 WorldGen V0.01a/meros_iv_arrays.npz
 Exploration MUD Project Brief.pdf
 .gitignore
