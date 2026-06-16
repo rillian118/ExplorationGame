@@ -25,6 +25,7 @@ __pycache__
 *.pid
 *.restart
 *.db3
+*_broken_backup.py
 
 # Runtime Files
 server/logs/*.log.*

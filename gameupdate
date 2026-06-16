@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+GAME_DIR="/home/mud/games/exploration"
+EVENNIA="/home/mud/games/evennia-env/bin/evennia"
+PYTHON="/home/mud/games/evennia-env/bin/python"
+
+cd "$GAME_DIR"
+
+echo "== Exploration MUD update =="
+echo "Game dir: $GAME_DIR"
+echo
+
+echo "== Current branch =="
+git branch --show-current
+echo
+
+echo "== Checking working tree =="
+if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo "ERROR: Working tree has uncommitted changes."
+    echo "Commit, stash, or discard changes before running gameupdate."
+    echo
+    git status --short
+    exit 1
+fi
+
+echo "== Updating from git =="
+echo "If Git needs credentials, enter them when prompted."
+git pull --ff-only
+echo
+
+echo "== Finding changed Python files in latest pull =="
+PREV_HEAD="$(git rev-parse HEAD@{1} 2>/dev/null || true)"
+CUR_HEAD="$(git rev-parse HEAD)"
+
+if [[ -n "$PREV_HEAD" && "$PREV_HEAD" != "$CUR_HEAD" ]]; then
+    mapfile -t PY_FILES < <(
+        git diff --name-only "$PREV_HEAD" "$CUR_HEAD" -- '*.py' |
+        while read -r file; do
+            [[ -f "$file" ]] && echo "$file"
+        done
+    )
+else
+    mapfile -t PY_FILES < <(
+        git ls-files --modified --others --exclude-standard -- '*.py' |
+        while read -r file; do
+            [[ -f "$file" ]] && echo "$file"
+        done
+    )
+fi
+
+if [[ "${#PY_FILES[@]}" -eq 0 ]]; then
+    echo "No changed Python files detected."
+else
+    echo "Compiling changed Python files:"
+    printf '  %s\n' "${PY_FILES[@]}"
+    echo
+
+    for file in "${PY_FILES[@]}"; do
+        "$PYTHON" -m py_compile "$file"
+    done
+fi
+
+echo
+echo "== Checking Evennia/Django configuration =="
+"$PYTHON" -m py_compile server/conf/settings.py
+if [[ -f server/conf/secret_settings.py ]]; then
+    "$PYTHON" -m py_compile server/conf/secret_settings.py
+fi
+
+echo
+echo "== Checking migration plan =="
+"$EVENNIA" migrate --plan
+
+echo
+echo "== Restarting Evennia =="
+"$EVENNIA" restart
+
+echo
+echo "== Update complete =="
