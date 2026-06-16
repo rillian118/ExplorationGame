@@ -5,9 +5,9 @@ move items forward as they are implemented, tested, or superseded.
 
 ## Now
 
-- [ ] Pull and smoke-test the ship sensor package feature on the server.
-- [ ] Verify `ship sensors packages`, `ship sensors install`, and `ship capabilities clear` in-game.
-- [ ] Verify survey radius/resolution caps respond to installed sensor packages.
+- [x] Pull and smoke-test the ship sensor package feature on the server.
+- [x] Verify `ship sensors packages`, `ship sensors install`, and `ship capabilities clear` in-game.
+- [x] Verify survey radius/resolution caps respond to installed sensor packages.
 
 ## Next
 
@@ -98,6 +98,7 @@ move items forward as they are implemented, tested, or superseded.
 - [x] Ship land/takeoff.
 - [x] Canonical ship airlock.
 - [x] Ship access roles.
+- [x] Ship sensor packages and manual capability overrides.
 - [x] Orbital survey scan.
 - [x] Timed orbital band survey operations.
 - [x] Survey semantic scan reports.
