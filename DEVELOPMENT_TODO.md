@@ -27,6 +27,8 @@ move items forward as they are implemented, tested, or superseded.
 - [ ] Add room description verbosity preference.
 - [ ] Expand ship interiors beyond the canonical airlock.
 - [ ] Add sensor effects from damage, power allocation, crew skill, and environment.
+- [ ] Make ship survey datasets extend to crew access where appropriate.
+- [ ] Revisit survey dataset ownership so ship-generated data can be tied to the ship, not only the player.
 
 ## Design Questions
 
