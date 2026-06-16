@@ -12,7 +12,12 @@ from world.surface.models import get_or_create_surface_room, get_surface_address
 
 from world.space.ship_capabilities import (
     capability_names,
+    clear_ship_capability_override,
+    install_ship_sensor_package,
+    normalize_capability_name,
     render_ship_capabilities,
+    render_sensor_package_catalog,
+    sensor_package_names,
     set_ship_capability,
 )
 from world.space.command_index import render_ship_command_index
@@ -209,9 +214,15 @@ class CmdShip(Command):
       ship setloc <ship> landed <system>/<body> <x> <y>
       ship disembark [ship]
       ship embark [ship]
+      ship sensors [ship]
+      ship sensors packages
+      ship sensors install [ship] <package>
+      ship capabilities [ship]
+      ship capabilities set [ship] <capability> <value>
+      ship capabilities clear [ship] [capability]
 
     Builder-only subcommands:
-      create, setloc
+      create, setloc, sensors install, capabilities set, capabilities clear
 
     This is a v0.3 test harness. It does not yet create full ship interiors.
     Disembark moves the character to the generated landing surface room; embark
@@ -232,8 +243,9 @@ class CmdShip(Command):
     def _handle_capabilities(self, rest: str) -> None:
         rest = (rest or "").strip()
         usage = (
-            "Usage: ship capabilities [ship] or "
-            f"ship capabilities set [ship] <{capability_names()}> <value>"
+            "Usage: ship capabilities [ship], "
+            f"ship capabilities set [ship] <{capability_names()}> <value>, or "
+            "ship capabilities clear [ship] [capability]"
         )
 
         action_parts = rest.split(None, 1)
@@ -279,9 +291,116 @@ class CmdShip(Command):
             self.caller.msg(f"Updated {_ship_display_name(ship)}: {key} = {value}.")
             return
 
+        if action == "clear":
+            if not _is_builder(self.caller):
+                self.caller.msg("You do not have permission to clear ship capability overrides.")
+                return
+
+            clear_args = action_parts[1].strip() if len(action_parts) > 1 else ""
+            ship = None
+            capability_name = ""
+
+            if not clear_args:
+                ship = get_current_ship_for_caller(self.caller)
+                if ship is None:
+                    self.caller.msg("No current ship selected. Use 'ship board <ship>' first, or name the ship.")
+                    return
+            else:
+                parts = clear_args.split()
+                if len(parts) == 1:
+                    if parts[0].lower() in {"all", "*"} or normalize_capability_name(parts[0]):
+                        ship = get_current_ship_for_caller(self.caller)
+                        capability_name = "" if parts[0].lower() in {"all", "*"} else parts[0]
+                        if ship is None:
+                            self.caller.msg("No current ship selected. Use 'ship board <ship>' first, or name the ship.")
+                            return
+                    else:
+                        ship = find_ship(clear_args)
+                        if ship is None:
+                            self.caller.msg(f"No ship named '{clear_args}' was found.")
+                            return
+                else:
+                    ship = find_ship(clear_args)
+                    if ship is not None:
+                        capability_name = ""
+                    else:
+                        ship_query, capability_name = clear_args.rsplit(None, 1)
+                        if capability_name.lower() in {"all", "*"}:
+                            capability_name = ""
+                        ship = find_ship(ship_query)
+                        if ship is None:
+                            self.caller.msg(f"No ship named '{ship_query}' was found.")
+                            return
+
+            try:
+                clear_ship_capability_override(ship, capability_name or None)
+            except Exception as err:
+                self.caller.msg(f"Could not clear ship capability override: {err}")
+                return
+
+            if capability_name:
+                self.caller.msg(f"Cleared {_ship_display_name(ship)} manual override for {capability_name}.")
+            else:
+                self.caller.msg(f"Cleared all manual capability overrides for {_ship_display_name(ship)}.")
+            return
+
         ship = self._resolve_ship_or_current(rest)
         if ship is None:
             self.caller.msg("No current ship selected. Use 'ship capabilities <ship>' or 'ship board <ship>'.")
+            return
+
+        self.caller.msg(render_ship_capabilities(ship))
+
+    def _handle_sensors(self, rest: str) -> None:
+        rest = (rest or "").strip()
+        usage = (
+            "Usage: ship sensors [ship], ship sensors packages, or "
+            f"ship sensors install [ship] <{sensor_package_names()}>"
+        )
+
+        action_parts = rest.split(None, 1)
+        action = action_parts[0].lower() if action_parts else ""
+
+        if action in {"packages", "list", "catalog"}:
+            self.caller.msg(render_sensor_package_catalog())
+            return
+
+        if action in {"install", "set"}:
+            if not _is_builder(self.caller):
+                self.caller.msg("You do not have permission to install ship sensor packages.")
+                return
+
+            install_args = action_parts[1].strip() if len(action_parts) > 1 else ""
+            if not install_args:
+                self.caller.msg(usage)
+                return
+
+            parts = install_args.split()
+            if len(parts) == 1:
+                ship = get_current_ship_for_caller(self.caller)
+                package_name = parts[0]
+                if ship is None:
+                    self.caller.msg("No current ship selected. Use 'ship board <ship>' first, or name the ship.")
+                    return
+            else:
+                ship_query, package_name = install_args.rsplit(None, 1)
+                ship = find_ship(ship_query)
+                if ship is None:
+                    self.caller.msg(f"No ship named '{ship_query}' was found.")
+                    return
+
+            try:
+                package_key, _capabilities = install_ship_sensor_package(ship, package_name)
+            except Exception as err:
+                self.caller.msg(f"Could not install sensor package: {err}")
+                return
+
+            self.caller.msg(f"Installed sensor package '{package_key}' on {_ship_display_name(ship)}.")
+            return
+
+        ship = self._resolve_ship_or_current(rest)
+        if ship is None:
+            self.caller.msg("No current ship selected. Use 'ship sensors <ship>' or 'ship board <ship>'.")
             return
 
         self.caller.msg(render_ship_capabilities(ship))
@@ -319,6 +438,10 @@ class CmdShip(Command):
 
         if subcmd in ("capabilities", "capability", "caps"):
             self._handle_capabilities(rest)
+            return
+
+        if subcmd in ("sensors", "sensor"):
+            self._handle_sensors(rest)
             return
             
         if subcmd == "land":
@@ -521,6 +644,7 @@ class CmdShip(Command):
             "ship land <x> <y>, ship land <system>/<body> <x> <y>, "
             "ship interior <ship>, "
             "ship disembark <ship>, ship embark <ship>, ship takeoff, "
+            "ship sensors [ship], ship sensors packages, ship sensors install [ship] <package>, "
             "ship capabilities [ship], ship capabilities set [ship] <capability> <value>, "
             "ship access, ship access add <player> <role>, ship access remove <player>"
         )

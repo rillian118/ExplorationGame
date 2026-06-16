@@ -13,7 +13,10 @@ from typing import Any, Dict, List, Optional
 from evennia import DefaultObject, create_object, search_object, search_tag  # type: ignore
 
 from .models import find_body, find_system_object, read_system_data
-from .ship_capabilities import default_ship_capabilities
+from .ship_capabilities import (
+    default_ship_capabilities,
+    ensure_ship_sensor_package,
+)
 
 
 SHIP_TAG = "space_ship"
@@ -74,6 +77,7 @@ class SpaceShipObject(DefaultObject):
         self.attributes.add("bridge_room", None)
         self.attributes.add("airlock_room", None)
         self.attributes.add("owner", None)
+        ensure_ship_sensor_package(self)
         self.attributes.add("ship_capabilities", default_ship_capabilities())
 
     @property
@@ -197,6 +201,7 @@ def create_ship(name: str, owner: Any = None) -> Any:
     ship.tags.add(SHIP_TAG, category=SHIP_TAG_CATEGORY)
     ship.attributes.add("ship_name", clean_name)
     ship.attributes.add("location_state", default_location_state())
+    ensure_ship_sensor_package(ship)
     ship.attributes.add("ship_capabilities", default_ship_capabilities())
 
     if owner is not None:

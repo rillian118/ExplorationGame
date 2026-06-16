@@ -45,7 +45,19 @@ SHIP_COMMAND_INDEX = [
     {
         "access": "Builder",
         "command": "ship capabilities set [ship] <capability> <value>",
-        "summary": "Set prototype survey/sensor capability values for a ship.",
+        "summary": "Set manual survey/sensor capability overrides for a ship.",
+        "lock": "cmd:perm(Builders)",
+    },
+    {
+        "access": "Builder",
+        "command": "ship capabilities clear [ship] [capability]",
+        "summary": "Clear one or all manual capability overrides so package values apply.",
+        "lock": "cmd:perm(Builders)",
+    },
+    {
+        "access": "Builder",
+        "command": "ship sensors install [ship] <package>",
+        "summary": "Install a prototype sensor package on a ship.",
         "lock": "cmd:perm(Builders)",
     },
     {
@@ -63,7 +75,19 @@ SHIP_COMMAND_INDEX = [
     {
         "access": "All",
         "command": "ship capabilities [ship]",
-        "summary": "Show survey/sensor capability values for your current ship or a named ship.",
+        "summary": "Show effective survey/sensor capability values for your current ship or a named ship.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "ship sensors [ship]",
+        "summary": "Show the installed sensor package and effective capability values.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "ship sensors packages",
+        "summary": "List available prototype sensor packages.",
         "lock": "cmd:all()",
     },
     {
