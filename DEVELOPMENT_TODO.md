@@ -44,6 +44,18 @@ move items forward as they are implemented, tested, or superseded.
 - [ ] Add cargo bay loose-object hazards during maneuvers.
 - [ ] Add zero-g training or spacer traits that reduce microgravity penalties.
 - [ ] Add specialized ship gravity profiles later: spin, microgravity, artificial, and hybrid.
+- [ ] Generate the Sol system using realistic sourcing where available and realistic procedural generation where needed.
+- [ ] Generate at least one landable city on Earth.
+- [ ] Design and implement player skilling.
+- [ ] Include survival, technical, tradesman, and piloting skill families.
+- [ ] Design and implement NPC ships and denizens.
+- [ ] Define a usable AI path for NPC ships and denizens.
+- [ ] Generate NPC ship traffic reactively from generated POIs, player-created POIs, player organizations, Earth's planetary organization, and economic needs.
+- [ ] Build a physicalized moving economy that players can interact with, prey on, and protect.
+- [ ] Design and balance PC and NPC individual combat.
+- [ ] Design and balance PC and NPC space combat.
+- [ ] Add a general status effect system and mitigation paths.
+- [ ] Design and implement player organizations.
 
 ## Design Direction
 
@@ -68,6 +80,13 @@ move items forward as they are implemented, tested, or superseded.
 - [ ] How lethal should catastrophic maneuver events be?
 - [ ] Should microgravity penalties affect NPCs and boarders equally?
 - [ ] Should room descriptions dynamically change between thrust and microgravity states?
+- [ ] What sources should be canonical for Sol system data, and how should gaps be procedurally filled?
+- [ ] What is the first playable scope for Earth cities: single landing site, district map, or broader city generator?
+- [ ] Should skills improve through use, training, instruction, implants/tools, or a hybrid model?
+- [ ] How granular should survival, technical, tradesman, and piloting skills be?
+- [ ] What NPC AI architecture is sufficient for ships, denizens, traffic, and economy without overbuilding?
+- [ ] How physical should the economy be at first: route simulation, spawned cargo, actual inventory movement, or market abstraction?
+- [ ] What kinds of player organizations are needed first: crews, companies, factions, settlements, or governments?
 
 ## Confirmed Working
 
