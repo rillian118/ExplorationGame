@@ -13,6 +13,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from django.db import transaction
+from django.utils import timezone
 
 from world.survey.models import (
     OWNER_CHARACTER,
@@ -21,6 +22,9 @@ from world.survey.models import (
     SurveyDataset,
     SurveyDatasetTile,
 )
+
+
+BULK_DATASET_IMPORT_BATCH_SIZE = 500
 
 
 def actor_owner_key(actor: Any) -> tuple[str, int]:
@@ -63,6 +67,28 @@ def get_owner_datasets(owner_scope: str, owner_id: int):
         owner_scope=owner_scope,
         owner_id=int(owner_id),
     ).order_by("-created_at", "-id")
+
+
+def _coverage_key(system_name: str, body_id: str, x: int, y: int, scan_type: str) -> tuple[str, str, int, int, str]:
+    """Return the unique logical key for one coverage tile."""
+    return (str(system_name), str(body_id), int(x), int(y), str(scan_type))
+
+
+def _merged_coverage_data(
+    existing_data: dict | None,
+    incoming_data: dict | None,
+    *,
+    current_resolution: int,
+    incoming_resolution: int,
+) -> dict:
+    """Merge tile payloads while preserving higher-resolution data."""
+    if int(incoming_resolution) >= int(current_resolution):
+        merged = dict(existing_data or {})
+        merged.update(incoming_data or {})
+    else:
+        merged = dict(incoming_data or {})
+        merged.update(existing_data or {})
+    return merged
 
 
 def summarize_coverage(owner_scope: str, owner_id: int) -> dict[str, Any]:
@@ -173,12 +199,12 @@ def upsert_coverage_tile(
             obj.quality = int(quality)
             changed = True
 
-        if incoming_resolution >= current_resolution:
-            merged = dict(obj.data or {})
-            merged.update(data or {})
-        else:
-            merged = dict(data or {})
-            merged.update(obj.data or {})
+        merged = _merged_coverage_data(
+            obj.data or {},
+            data or {},
+            current_resolution=current_resolution,
+            incoming_resolution=incoming_resolution,
+        )
         if merged != (obj.data or {}):
             obj.data = merged
             changed = True
@@ -283,39 +309,112 @@ def export_dataset_from_coverage(
 
 
 @transaction.atomic
-def import_dataset_tiles_to_coverage(
+def import_dataset_tiles_to_coverage_chunk(
     *,
     dataset: SurveyDataset,
     owner_scope: str,
     owner_id: int,
     source_object_id: int | None = None,
+    offset: int = 0,
+    limit: int = BULK_DATASET_IMPORT_BATCH_SIZE,
+    total_tiles: int | None = None,
 ) -> dict[str, Any]:
     """
-    Import a packaged dataset into an owner's mutable SurveyCoverage.
+    Import one chunk of a packaged dataset into mutable SurveyCoverage.
 
-    This is the core "load cartridge" operation. It does not alter or consume
-    the SurveyDataset, and it does not require the digital dataset owner to be
-    the importing actor. Possession/access should be checked by the caller.
-
-    Existing coverage rows are improved/merged by `upsert_coverage_tile`.
+    Existing rows are prefetched by group and then written in bulk. This keeps
+    large cartridge loads from issuing one query and one save per tile.
     """
-    tiles = list(dataset.tiles.all().order_by("system_name", "body_id", "scan_type", "x", "y"))
+    offset = max(0, int(offset or 0))
+    limit = max(1, int(limit or BULK_DATASET_IMPORT_BATCH_SIZE))
+    total = int(total_tiles) if total_tiles is not None else int(dataset.tiles.count())
+    tiles = list(
+        dataset.tiles.all()
+        .order_by("id")
+        .only(
+            "id",
+            "system_name",
+            "body_id",
+            "body_name",
+            "x",
+            "y",
+            "scan_type",
+            "resolution",
+            "quality",
+            "data",
+        )[offset : offset + limit]
+    )
+
+    if not tiles:
+        return {
+            "dataset_id": int(dataset.id),
+            "dataset_name": dataset.name,
+            "tile_count": 0,
+            "processed_total": offset,
+            "next_offset": offset,
+            "total_tiles": total,
+            "created": 0,
+            "updated": 0,
+            "merged": 0,
+            "done": True,
+            "summary": _summarize_dataset_tile_batch([]),
+        }
+
+    bounds_by_group: dict[tuple[str, str, str], dict[str, int]] = {}
+    for tile in tiles:
+        group_key = (str(tile.system_name), str(tile.body_id), str(tile.scan_type))
+        bounds = bounds_by_group.setdefault(
+            group_key,
+            {
+                "x_min": int(tile.x),
+                "x_max": int(tile.x),
+                "y_min": int(tile.y),
+                "y_max": int(tile.y),
+            },
+        )
+        bounds["x_min"] = min(bounds["x_min"], int(tile.x))
+        bounds["x_max"] = max(bounds["x_max"], int(tile.x))
+        bounds["y_min"] = min(bounds["y_min"], int(tile.y))
+        bounds["y_max"] = max(bounds["y_max"], int(tile.y))
+
+    existing_by_key: dict[tuple[str, str, int, int, str], SurveyCoverage] = {}
+    for (system_name, body_id, scan_type), bounds in bounds_by_group.items():
+        rows = SurveyCoverage.objects.filter(
+            owner_scope=owner_scope,
+            owner_id=int(owner_id),
+            system_name=system_name,
+            body_id=body_id,
+            scan_type=scan_type,
+            x__gte=bounds["x_min"],
+            x__lte=bounds["x_max"],
+            y__gte=bounds["y_min"],
+            y__lte=bounds["y_max"],
+        ).only(
+            "id",
+            "system_name",
+            "body_id",
+            "body_name",
+            "x",
+            "y",
+            "scan_type",
+            "resolution",
+            "quality",
+            "source_ship_id",
+            "source_object_id",
+            "data",
+            "first_scanned_at",
+            "last_scanned_at",
+        )
+        for row in rows:
+            existing_by_key[_coverage_key(row.system_name, row.body_id, row.x, row.y, row.scan_type)] = row
 
     created = 0
     updated = 0
-    unchanged_or_merged = 0
+    now = timezone.now()
+    create_rows: list[SurveyCoverage] = []
+    update_rows: list[SurveyCoverage] = []
 
     for tile in tiles:
-        existed = SurveyCoverage.objects.filter(
-            owner_scope=owner_scope,
-            owner_id=int(owner_id),
-            system_name=tile.system_name,
-            body_id=tile.body_id,
-            x=int(tile.x),
-            y=int(tile.y),
-            scan_type=tile.scan_type,
-        ).exists()
-
         data = dict(tile.data or {})
         data.update(
             {
@@ -326,38 +425,193 @@ def import_dataset_tiles_to_coverage(
             }
         )
 
-        upsert_coverage_tile(
-            owner_scope=owner_scope,
-            owner_id=int(owner_id),
-            system_name=tile.system_name,
-            body_id=tile.body_id,
-            body_name=tile.body_name or dataset.body_name or "",
-            x=int(tile.x),
-            y=int(tile.y),
-            scan_type=tile.scan_type,
-            resolution=int(tile.resolution or 0),
-            quality=int(tile.quality or 0),
-            source_ship_id=dataset.source_ship_id,
-            source_object_id=source_object_id,
-            data=data,
+        key = _coverage_key(tile.system_name, tile.body_id, tile.x, tile.y, tile.scan_type)
+        existing = existing_by_key.get(key)
+        incoming_resolution = int(tile.resolution or 0)
+        incoming_quality = int(tile.quality or 0)
+        body_name = tile.body_name or dataset.body_name or ""
+
+        if existing is None:
+            create_rows.append(
+                SurveyCoverage(
+                    owner_scope=owner_scope,
+                    owner_id=int(owner_id),
+                    system_name=tile.system_name,
+                    body_id=tile.body_id,
+                    body_name=body_name,
+                    x=int(tile.x),
+                    y=int(tile.y),
+                    scan_type=tile.scan_type,
+                    resolution=incoming_resolution,
+                    quality=incoming_quality,
+                    source_ship_id=dataset.source_ship_id,
+                    source_object_id=source_object_id,
+                    data=data,
+                    first_scanned_at=now,
+                    last_scanned_at=now,
+                )
+            )
+            created += 1
+            continue
+
+        current_resolution = int(existing.resolution or 0)
+        existing.resolution = max(current_resolution, incoming_resolution)
+        existing.quality = max(int(existing.quality or 0), incoming_quality)
+        existing.data = _merged_coverage_data(
+            existing.data or {},
+            data,
+            current_resolution=current_resolution,
+            incoming_resolution=incoming_resolution,
+        )
+        if body_name:
+            existing.body_name = body_name
+        if dataset.source_ship_id:
+            existing.source_ship_id = dataset.source_ship_id
+        if source_object_id is not None:
+            existing.source_object_id = source_object_id
+        existing.last_scanned_at = now
+        update_rows.append(existing)
+        updated += 1
+
+    if create_rows:
+        SurveyCoverage.objects.bulk_create(create_rows, batch_size=BULK_DATASET_IMPORT_BATCH_SIZE)
+
+    if update_rows:
+        SurveyCoverage.objects.bulk_update(
+            update_rows,
+            [
+                "body_name",
+                "resolution",
+                "quality",
+                "source_ship_id",
+                "source_object_id",
+                "data",
+                "last_scanned_at",
+            ],
+            batch_size=BULK_DATASET_IMPORT_BATCH_SIZE,
         )
 
-        if existed:
-            updated += 1
-        else:
-            created += 1
-
-    # Kept as a separate field for future richer diffing.
-    unchanged_or_merged = updated
+    next_offset = offset + len(tiles)
 
     return {
         "dataset_id": int(dataset.id),
         "dataset_name": dataset.name,
         "tile_count": len(tiles),
+        "processed_total": next_offset,
+        "next_offset": next_offset,
+        "total_tiles": total,
         "created": created,
         "updated": updated,
-        "merged": unchanged_or_merged,
+        "merged": updated,
+        "done": next_offset >= total,
+        "summary": _summarize_dataset_tile_batch(tiles),
     }
+
+
+def _list_payload_values(data: dict[str, Any], *keys: str) -> list[str]:
+    """Return normalized string values from a scalar or list payload field."""
+    for key in keys:
+        value = data.get(key)
+        if not value:
+            continue
+        values = value if isinstance(value, (list, tuple, set)) else [value]
+        result = [
+            str(item)
+            for item in values
+            if item is not None and item != "" and str(item).lower() != "none"
+        ]
+        if result:
+            return result
+    return []
+
+
+def _summarize_dataset_tile_batch(tiles: Iterable[SurveyDatasetTile]) -> dict[str, Any]:
+    """Return compact player-facing content summary for an imported batch."""
+    terrain = Counter()
+    hazards = Counter()
+    resources = Counter()
+    anomalies = Counter()
+    resolutions: list[int] = []
+
+    for tile in tiles:
+        data = dict(tile.data or {})
+        label = (
+            data.get("terrain")
+            or data.get("terrain_label")
+            or data.get("terrain_name")
+            or data.get("scan_type")
+            or tile.scan_type
+        )
+        if label:
+            terrain[str(label).lower()] += 1
+
+        for hazard in _list_payload_values(data, "hazards", "hazard"):
+            hazards[hazard] += 1
+
+        for resource in _list_payload_values(data, "resource_signatures", "resources"):
+            resources[resource] += 1
+
+        for anomaly in _list_payload_values(data, "anomaly_signatures", "anomalies"):
+            anomalies[anomaly] += 1
+
+        try:
+            resolutions.append(int(tile.resolution or 0))
+        except Exception:
+            pass
+
+    return {
+        "terrain": terrain.most_common(4),
+        "hazards": hazards.most_common(4),
+        "resources": resources.most_common(4),
+        "anomalies": anomalies.most_common(4),
+        "min_resolution": min(resolutions) if resolutions else 0,
+        "max_resolution": max(resolutions) if resolutions else 0,
+    }
+
+
+@transaction.atomic
+def import_dataset_tiles_to_coverage(
+    *,
+    dataset: SurveyDataset,
+    owner_scope: str,
+    owner_id: int,
+    source_object_id: int | None = None,
+) -> dict[str, Any]:
+    """
+    Import a packaged dataset into an owner's mutable SurveyCoverage.
+
+    This compatibility path still completes synchronously, but it uses chunked
+    bulk writes internally. Player commands should prefer the timed cartridge
+    load operation so large imports become visible in-game progress.
+    """
+    total = int(dataset.tiles.count())
+    offset = 0
+    aggregate = {
+        "dataset_id": int(dataset.id),
+        "dataset_name": dataset.name,
+        "tile_count": 0,
+        "created": 0,
+        "updated": 0,
+        "merged": 0,
+    }
+
+    while offset < total:
+        result = import_dataset_tiles_to_coverage_chunk(
+            dataset=dataset,
+            owner_scope=owner_scope,
+            owner_id=int(owner_id),
+            source_object_id=source_object_id,
+            offset=offset,
+            limit=BULK_DATASET_IMPORT_BATCH_SIZE,
+            total_tiles=total,
+        )
+        aggregate["tile_count"] += int(result["tile_count"])
+        aggregate["created"] += int(result["created"])
+        aggregate["updated"] += int(result["updated"])
+        aggregate["merged"] += int(result["merged"])
+        offset = int(result["next_offset"])
+
+    return aggregate
 
 
 def render_dataset_list(owner_scope: str, owner_id: int) -> str:

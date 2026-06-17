@@ -58,6 +58,8 @@ class CmdSurvey(Command):
       survey export <name>
       survey materialize <dataset id>
       survey load <cartridge>
+      survey load status
+      survey load cancel
     """
 
     key = "survey"
@@ -167,7 +169,7 @@ class CmdSurvey(Command):
             "survey cartridges, survey map, survey map brief, survey map list, "
             "survey detail <x> <y>, survey inspect <id or cartridge>, "
             "survey export <name>, survey materialize <dataset id>, "
-            "survey load <cartridge>"
+            "survey load <cartridge>, survey load status, survey load cancel"
         )
 
 

@@ -135,7 +135,19 @@ SURVEY_COMMAND_INDEX = [
     {
         "access": "All",
         "command": "survey load <cartridge>",
-        "summary": "Import a carried survey data cartridge into your survey coverage.",
+        "summary": "Begin loading a carried survey data cartridge into your survey coverage in timed chunks.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "survey load status",
+        "summary": "Show active survey cartridge load progress.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "survey load cancel",
+        "summary": "Cancel the active survey cartridge load operation.",
         "lock": "cmd:all()",
     },
 ]

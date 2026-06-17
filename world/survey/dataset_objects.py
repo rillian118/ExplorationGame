@@ -4,14 +4,17 @@ Helpers for tangible survey data cartridge objects.
 
 from __future__ import annotations
 
+import time
+from collections.abc import Mapping
 from typing import Any
 
 from evennia.utils.create import create_object  # type: ignore
 
 from world.survey.models import SurveyDataset
 from world.survey.services import (
+    BULK_DATASET_IMPORT_BATCH_SIZE,
     actor_owner_key,
-    import_dataset_tiles_to_coverage,
+    import_dataset_tiles_to_coverage_chunk,
     render_dataset_detail,
 )
 
@@ -22,6 +25,11 @@ SURVEY_CARTRIDGE_TAG_CATEGORY = "survey"
 
 SURVEY_DATASET_ID_ATTR = "survey_dataset_id"
 LEGACY_DATASET_ID_ATTR = "dataset_id"
+SURVEY_LOAD_OPERATION_ATTR = "survey_cartridge_load_operation"
+SURVEY_LOAD_SCRIPT_KEY = "survey_cartridge_load_timer"
+SURVEY_LOAD_SCRIPT_PATH = "world.survey.scripts.SurveyCartridgeLoadScript"
+SURVEY_LOAD_INTERVAL_SECONDS = 3
+SURVEY_LOAD_CHUNK_SIZE = BULK_DATASET_IMPORT_BATCH_SIZE
 
 
 def _to_int(value: Any) -> int | None:
@@ -208,11 +216,20 @@ def render_cartridge_list(caller: Any) -> str:
     if not cartridges:
         return "You are not carrying any survey data cartridges."
 
-    lines = ["Survey data cartridges:"]
+    dataset_ids = []
+    cartridge_dataset_ids = []
     for obj in cartridges:
-        dataset = get_dataset_for_cartridge(obj)
+        dataset_id = get_cartridge_dataset_id(obj)
+        cartridge_dataset_ids.append((obj, dataset_id))
+        if dataset_id is not None:
+            dataset_ids.append(int(dataset_id))
+
+    datasets = SurveyDataset.objects.in_bulk(dataset_ids) if dataset_ids else {}
+
+    lines = ["Survey data cartridges:"]
+    for obj, dataset_id in cartridge_dataset_ids:
+        dataset = datasets.get(int(dataset_id)) if dataset_id is not None else None
         if dataset is None:
-            dataset_id = get_cartridge_dataset_id(obj)
             lines.append(f"  {obj.key} ({obj.dbref}) [missing dataset #{dataset_id}]")
             continue
 
@@ -223,6 +240,212 @@ def render_cartridge_list(caller: Any) -> str:
         )
 
     return "\n".join(lines)
+
+
+def _read_load_operation(caller: Any) -> dict[str, Any]:
+    """Read caller's active cartridge load operation."""
+    try:
+        raw = caller.attributes.get(SURVEY_LOAD_OPERATION_ATTR)
+    except Exception:
+        raw = None
+    return dict(raw) if isinstance(raw, Mapping) else {}
+
+
+def _write_load_operation(caller: Any, operation: dict[str, Any]) -> None:
+    """Persist caller's active cartridge load operation."""
+    caller.attributes.add(SURVEY_LOAD_OPERATION_ATTR, dict(operation))
+
+
+def _clear_load_operation(caller: Any) -> None:
+    """Clear caller's active cartridge load operation."""
+    try:
+        caller.attributes.remove(SURVEY_LOAD_OPERATION_ATTR)
+    except Exception:
+        pass
+
+
+def _get_load_scripts(caller: Any) -> list[Any]:
+    """Return active cartridge load timer scripts attached to caller."""
+    try:
+        scripts = caller.scripts.get(key=SURVEY_LOAD_SCRIPT_KEY)
+    except Exception:
+        return []
+
+    if not scripts:
+        return []
+    if isinstance(scripts, (list, tuple)):
+        return list(scripts)
+    try:
+        return list(scripts)
+    except Exception:
+        return [scripts]
+
+
+def _stop_load_timer(caller: Any) -> None:
+    """Stop all cartridge load timer scripts attached to caller."""
+    for script in _get_load_scripts(caller):
+        try:
+            script.stop()
+        except Exception:
+            pass
+
+
+def _start_load_timer(caller: Any) -> str:
+    """Start or restart the cartridge load timer."""
+    _stop_load_timer(caller)
+    try:
+        from evennia.utils.create import create_script  # type: ignore
+
+        script = create_script(
+            SURVEY_LOAD_SCRIPT_PATH,
+            key=SURVEY_LOAD_SCRIPT_KEY,
+            obj=caller,
+            interval=SURVEY_LOAD_INTERVAL_SECONDS,
+            start_delay=True,
+            persistent=True,
+            autostart=True,
+        )
+        script.interval = SURVEY_LOAD_INTERVAL_SECONDS
+        script.start_delay = True
+        script.persistent = True
+        return ""
+    except Exception as err:
+        return f"Could not start survey cartridge load timer: {err}"
+
+
+def _format_common(values: list[tuple[str, int]], *, limit: int = 3) -> str:
+    """Format counted summary values."""
+    if not values:
+        return ""
+    shown = [f"{label} ({count})" for label, count in values[:limit]]
+    if len(values) > limit:
+        shown.append(f"+{len(values) - limit} more")
+    return ", ".join(shown)
+
+
+def _format_load_operation(operation: dict[str, Any]) -> str:
+    """Render active cartridge load status."""
+    if not operation:
+        return "No active survey cartridge load operation."
+
+    total = int(operation.get("total_tiles") or 0)
+    processed = int(operation.get("processed") or 0)
+    percent = int((processed / total) * 100) if total else 100
+    status = str(operation.get("status") or "running")
+
+    return "\n".join(
+        [
+            "Survey cartridge load operation",
+            f"  Status: {status}",
+            f"  Dataset: #{operation.get('dataset_id')} {operation.get('dataset_name')}",
+            f"  Cartridge: {operation.get('cartridge_key')}",
+            f"  Progress: {processed}/{total} tiles ({percent}%)",
+            f"  Coverage writes: {operation.get('created', 0)} new, {operation.get('updated', 0)} merged",
+            f"  Chunk size: {operation.get('chunk_size', SURVEY_LOAD_CHUNK_SIZE)} tiles",
+        ]
+    )
+
+
+def _format_load_step_message(operation: dict[str, Any], result: dict[str, Any]) -> str:
+    """Render one player-facing cartridge decode progress message."""
+    total = int(result.get("total_tiles") or operation.get("total_tiles") or 0)
+    processed = int(result.get("processed_total") or operation.get("processed") or 0)
+    chunk_count = int(result.get("tile_count") or 0)
+    start = max(1, processed - chunk_count + 1) if chunk_count else processed
+    percent = int((processed / total) * 100) if total else 100
+    summary = result.get("summary") or {}
+
+    lines = [
+        "Survey cartridge upload: decoding data block.",
+        f"Dataset #{operation.get('dataset_id')}: {operation.get('dataset_name')}",
+        f"Tiles {start}-{processed} of {total} committed ({percent}%).",
+        f"Coverage writes this block: {result.get('created', 0)} new, {result.get('updated', 0)} merged.",
+    ]
+
+    min_res = int(summary.get("min_resolution") or 0)
+    max_res = int(summary.get("max_resolution") or 0)
+    if min_res or max_res:
+        if min_res == max_res:
+            lines.append(f"Resolution stream: r{max_res}.")
+        else:
+            lines.append(f"Resolution stream: r{min_res}-r{max_res}.")
+
+    terrain = _format_common(summary.get("terrain") or [])
+    if terrain:
+        lines.append(f"Terrain decoded: {terrain}.")
+
+    hazards = _format_common(summary.get("hazards") or [])
+    if hazards:
+        lines.append(f"Hazard flags: {hazards}.")
+
+    resources = _format_common(summary.get("resources") or [])
+    if resources:
+        lines.append(f"Resource signatures: {resources}.")
+
+    anomalies = _format_common(summary.get("anomalies") or [])
+    if anomalies:
+        lines.append(f"Anomaly candidates: {anomalies}.")
+
+    if result.get("done"):
+        lines.append(
+            f"Cartridge load complete: {operation.get('created', 0)} new, "
+            f"{operation.get('updated', 0)} merged total."
+        )
+    else:
+        lines.append("Cartridge buffer advances to the next data block.")
+
+    return "\n".join(lines)
+
+
+def _perform_load_step(caller: Any) -> tuple[str, bool]:
+    """Process one cartridge load chunk. Return message and keep-running flag."""
+    operation = _read_load_operation(caller)
+    if not operation:
+        return "No active survey cartridge load operation.", False
+
+    if operation.get("status") != "running":
+        return "", False
+
+    try:
+        dataset = SurveyDataset.objects.get(id=int(operation.get("dataset_id")))
+    except SurveyDataset.DoesNotExist:
+        _clear_load_operation(caller)
+        return f"Survey cartridge load stopped: missing dataset #{operation.get('dataset_id')}.", False
+
+    result = import_dataset_tiles_to_coverage_chunk(
+        dataset=dataset,
+        owner_scope=str(operation.get("owner_scope")),
+        owner_id=int(operation.get("owner_id")),
+        source_object_id=operation.get("source_object_id"),
+        offset=int(operation.get("next_offset") or 0),
+        limit=int(operation.get("chunk_size") or SURVEY_LOAD_CHUNK_SIZE),
+        total_tiles=int(operation.get("total_tiles") or dataset.tile_count or dataset.tiles.count()),
+    )
+
+    operation["next_offset"] = int(result.get("next_offset") or 0)
+    operation["processed"] = int(result.get("processed_total") or operation["next_offset"])
+    operation["created"] = int(operation.get("created") or 0) + int(result.get("created") or 0)
+    operation["updated"] = int(operation.get("updated") or 0) + int(result.get("updated") or 0)
+    operation["merged"] = int(operation.get("merged") or 0) + int(result.get("merged") or 0)
+    operation["updated_at"] = int(time.time())
+
+    done = bool(result.get("done"))
+    if done:
+        operation["status"] = "complete"
+
+    message = _format_load_step_message(operation, result)
+
+    if done:
+        _clear_load_operation(caller)
+        return message, False
+
+    _write_load_operation(caller, operation)
+    return message, True
+
+
+def run_survey_cartridge_load_tick(caller: Any) -> tuple[str, bool]:
+    """Run one timed cartridge load tick for a Script."""
+    return _perform_load_step(caller)
 
 
 def _matches_object_query(obj: Any, query: str) -> bool:
@@ -361,7 +584,26 @@ def load_cartridge_into_coverage(caller: Any, query: str) -> str:
     """
     query = (query or "").strip()
     if not query:
-        return "Usage: survey load <cartridge>"
+        return "Usage: survey load <cartridge>, survey load status, or survey load cancel"
+
+    action = query.lower()
+    if action in {"status", "progress"}:
+        return _format_load_operation(_read_load_operation(caller))
+
+    if action in {"cancel", "stop", "clear"}:
+        if not _read_load_operation(caller):
+            return "No active survey cartridge load operation."
+        _stop_load_timer(caller)
+        _clear_load_operation(caller)
+        return "Cancelled active survey cartridge load operation."
+
+    existing_operation = _read_load_operation(caller)
+    if existing_operation:
+        return (
+            "A survey cartridge load is already running.\n"
+            + _format_load_operation(existing_operation)
+            + "\nUse survey load status or survey load cancel."
+        )
 
     cartridge = find_inventory_cartridge(caller, query)
     if cartridge is None:
@@ -373,16 +615,44 @@ def load_cartridge_into_coverage(caller: Any, query: str) -> str:
         return f"That cartridge references missing survey dataset #{dataset_id}."
 
     owner_scope, owner_id = actor_owner_key(caller)
-    result = import_dataset_tiles_to_coverage(
-        dataset=dataset,
-        owner_scope=owner_scope,
-        owner_id=int(owner_id),
-        source_object_id=getattr(cartridge, "id", None),
-    )
+    total_tiles = int(dataset.tile_count or dataset.tiles.count())
+    if total_tiles <= 0:
+        return f"Survey dataset #{dataset.id}: {dataset.name} contains no tiles to load."
 
-    return (
-        f"Loaded survey dataset #{result['dataset_id']}: {result['dataset_name']} "
-        f"from {getattr(cartridge, 'key', 'survey data cartridge')}. "
-        f"{result['tile_count']} tiles processed "
-        f"({result['created']} new, {result['updated']} existing updated/merged)."
-    )
+    operation = {
+        "status": "running",
+        "dataset_id": int(dataset.id),
+        "dataset_name": dataset.name,
+        "cartridge_key": getattr(cartridge, "key", "survey data cartridge"),
+        "source_object_id": getattr(cartridge, "id", None),
+        "owner_scope": owner_scope,
+        "owner_id": int(owner_id),
+        "next_offset": 0,
+        "processed": 0,
+        "total_tiles": total_tiles,
+        "chunk_size": SURVEY_LOAD_CHUNK_SIZE,
+        "created": 0,
+        "updated": 0,
+        "merged": 0,
+        "started_at": int(time.time()),
+        "updated_at": int(time.time()),
+    }
+    _write_load_operation(caller, operation)
+
+    message, keep_running = _perform_load_step(caller)
+    if not keep_running:
+        _stop_load_timer(caller)
+        return message
+
+    timer_error = _start_load_timer(caller)
+    if timer_error:
+        operation = _read_load_operation(caller)
+        operation["status"] = "paused"
+        operation["last_error"] = timer_error
+        _write_load_operation(caller, operation)
+        return message + "\n" + timer_error
+
+    operation = _read_load_operation(caller)
+    progress = _format_load_operation(operation)
+
+    return message + "\n\n" + progress
