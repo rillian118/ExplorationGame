@@ -61,6 +61,22 @@ def _format_body(row_or_view: Any) -> str:
     return f"{system}/{body}"
 
 
+def _list_values(value: Any) -> list[str]:
+    """Return a readable string list from a scalar or list-like value."""
+    if not value:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        values = value
+    else:
+        values = [value]
+    return [str(item) for item in values if item is not None and item != ""]
+
+
+def _format_values(value: Any) -> str:
+    """Format scalar/list-like detail values."""
+    return ", ".join(_list_values(value))
+
+
 def _coverage_queryset(owner_scope: str, owner_id: int):
     return SurveyCoverage.objects.filter(
         owner_scope=owner_scope,
@@ -571,15 +587,76 @@ def render_survey_detail(caller: Any, args: str) -> str:
         lines.append(f"Resolution: {row.resolution}")
         lines.append(f"Quality: {row.quality}")
 
-        if data.get("elevation_m") is not None or data.get("elevation") is not None:
-            lines.append(f"Elevation: {data.get('elevation_m') or data.get('elevation')} meters")
+        if data.get("scan_resolution_tier"):
+            lines.append(f"Resolution tier: {data.get('scan_resolution_tier')}")
+
+        if data.get("scan_layers"):
+            lines.append(f"Scan layers: {_format_values(data.get('scan_layers'))}")
+
+        elevation = data.get("elevation_m") if data.get("elevation_m") is not None else data.get("elevation")
+        if elevation is not None:
+            lines.append(f"Elevation: {elevation} meters")
 
         if data.get("temperature_k") is not None or data.get("temperature") is not None:
-            temp = data.get("temperature_k") or data.get("temperature")
+            temp = data.get("temperature_k") if data.get("temperature_k") is not None else data.get("temperature")
             lines.append(f"Temperature: {temp} K")
 
         if data.get("radiation") is not None:
             lines.append(f"Radiation: {data.get('radiation')}")
+
+        gravity = data.get("gravity") if data.get("gravity") is not None else data.get("gravity_g")
+        if gravity is not None:
+            lines.append(f"Gravity: {gravity}g")
+
+        if data.get("roughness") is not None:
+            roughness = data.get("roughness")
+            roughness_class = data.get("roughness_class")
+            if roughness_class:
+                lines.append(f"Roughness: {roughness} ({roughness_class})")
+            else:
+                lines.append(f"Roughness: {roughness}")
+
+        bands = []
+        if data.get("temperature_band"):
+            bands.append(f"temperature {data.get('temperature_band')}")
+        if data.get("radiation_band"):
+            bands.append(f"radiation {data.get('radiation_band')}")
+        if data.get("gravity_band"):
+            bands.append(f"gravity {data.get('gravity_band')}")
+        if bands:
+            lines.append(f"Environment bands: {', '.join(bands)}")
+
+        if data.get("feature_tags"):
+            lines.append(f"Feature tags: {_format_values(data.get('feature_tags'))}")
+
+        if data.get("hazards"):
+            lines.append(f"Hazards: {_format_values(data.get('hazards'))}")
+        elif data.get("hazard_level") and data.get("hazard_level") != "none":
+            lines.append(f"Hazard level: {data.get('hazard_level')}")
+
+        if data.get("hazard_score") is not None:
+            lines.append(f"Hazard score: {data.get('hazard_score')}")
+
+        if data.get("resource_signatures"):
+            lines.append(f"Resource signatures: {_format_values(data.get('resource_signatures'))}")
+
+        if data.get("anomaly_signatures"):
+            lines.append(f"Anomaly signatures: {_format_values(data.get('anomaly_signatures'))}")
+
+        traversal = data.get("traversal") if isinstance(data.get("traversal"), dict) else {}
+        if traversal:
+            blocked = _format_values(traversal.get("blocked_directions"))
+            rough = _format_values(traversal.get("rough_directions"))
+            easy = _format_values(traversal.get("easy_directions"))
+            if blocked:
+                lines.append(f"Blocked directions: {blocked}")
+            if rough:
+                lines.append(f"Rough directions: {rough}")
+            if easy:
+                lines.append(f"Easy directions: {easy}")
+
+        if data.get("survey_notes"):
+            lines.append(f"Survey notes: {_format_values(data.get('survey_notes'))}")
 
         if data.get("summary"):
             lines.append(f"Summary: {data.get('summary')}")

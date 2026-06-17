@@ -148,7 +148,7 @@ def upsert_coverage_tile(
         "data": data or {},
     }
 
-    obj, created = SurveyCoverage.objects.update_or_create(
+    obj, created = SurveyCoverage.objects.get_or_create(
         owner_scope=owner_scope,
         owner_id=int(owner_id),
         system_name=str(system_name),
@@ -160,9 +160,12 @@ def upsert_coverage_tile(
     )
 
     if not created:
-        changed = False
+        changed = True  # Refresh last_scanned_at even when the payload is unchanged.
 
-        if int(resolution) > int(obj.resolution or 0):
+        incoming_resolution = int(resolution)
+        current_resolution = int(obj.resolution or 0)
+
+        if incoming_resolution > current_resolution:
             obj.resolution = int(resolution)
             changed = True
 
@@ -170,8 +173,12 @@ def upsert_coverage_tile(
             obj.quality = int(quality)
             changed = True
 
-        merged = dict(obj.data or {})
-        merged.update(data or {})
+        if incoming_resolution >= current_resolution:
+            merged = dict(obj.data or {})
+            merged.update(data or {})
+        else:
+            merged = dict(data or {})
+            merged.update(obj.data or {})
         if merged != (obj.data or {}):
             obj.data = merged
             changed = True

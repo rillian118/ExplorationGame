@@ -47,6 +47,18 @@ DEFAULT_BAND_STEP_SECONDS = 60
 MIN_BAND_STEP_SECONDS = 5
 MAX_BAND_STEP_SECONDS = 3600
 
+RESOLUTION_TIER_LABELS = {
+    1: "terrain pass",
+    2: "environment pass",
+    3: "analysis pass",
+}
+
+RESOLUTION_LAYER_LABELS = {
+    1: ("terrain", "elevation", "temperature", "radiation"),
+    2: ("hazards", "roughness", "traversal"),
+    3: ("resources", "anomalies", "site notes"),
+}
+
 
 SCAN_USAGE = (
     "Usage: survey scan [radius <number>] [resolution <number>] or "
@@ -136,7 +148,419 @@ def _surface_tile_payload(body: dict[str, Any], x: int, y: int) -> dict[str, Any
     }
 
 
-def _scan_tile_data(system_data: dict[str, Any], body: dict[str, Any], x: int, y: int) -> dict[str, Any]:
+def _first_value(mapping: Mapping[str, Any], *keys: str) -> Any:
+    """Return the first non-empty value from a mapping."""
+    for key in keys:
+        value = mapping.get(key)
+        if value is not None and value != "":
+            return value
+    return None
+
+
+def _as_list(value: Any) -> list[Any]:
+    """Return value as a list without splitting strings."""
+    if value is None or value == "":
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return list(value)
+    return [value]
+
+
+def _float_or_none(value: Any) -> float | None:
+    """Best-effort float conversion."""
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
+def _compact_generated_payload(generated: dict[str, Any], sample: dict[str, Any]) -> dict[str, Any]:
+    """Flatten generated surface data into survey-friendly fields."""
+    terrain_code = _first_value(sample, "terrain")
+    terrain_label = _first_value(sample, "terrain_label", "terrain_name", "name")
+
+    raw = {
+        "x": _first_value(sample, "x"),
+        "y": _first_value(sample, "y"),
+        "terrain": terrain_label or terrain_code or _first_value(generated, "terrain", "terrain_label", "name"),
+        "terrain_code": terrain_code,
+        "terrain_label": terrain_label,
+        "elevation_m": _first_value(sample, "elevation_m", "elevation"),
+        "temperature_k": _first_value(sample, "temperature_k", "temperature"),
+        "radiation": _first_value(sample, "radiation"),
+        "gravity": _first_value(sample, "gravity_g", "gravity"),
+        "summary": _first_value(generated, "description", "summary", "desc"),
+        "surface_title": _first_value(generated, "title"),
+    }
+
+    compact = compact_tile_data(
+        {key: value for key, value in raw.items() if value is not None and value != ""}
+    )
+
+    feature_tags = _as_list(_first_value(sample, "feature_tags", "tags"))
+    if feature_tags:
+        compact["feature_tags"] = [str(tag) for tag in feature_tags]
+
+    return compact
+
+
+def _resolution_tier(resolution: int) -> str:
+    """Return a player-facing resolution tier label."""
+    return RESOLUTION_TIER_LABELS.get(min(max(1, int(resolution)), 3), "analysis pass")
+
+
+def _resolution_layers(resolution: int) -> list[str]:
+    """Return scan data layers revealed at this resolution."""
+    layers: list[str] = []
+    for tier in range(1, min(max(1, int(resolution)), 3) + 1):
+        layers.extend(RESOLUTION_LAYER_LABELS[tier])
+    return layers
+
+
+def _temperature_band(temp_k: float | None) -> str | None:
+    """Return coarse temperature band."""
+    if temp_k is None:
+        return None
+    if temp_k >= 750:
+        return "thermal rupture"
+    if temp_k >= 330:
+        return "hot"
+    if temp_k <= 120:
+        return "cryogenic"
+    if temp_k <= 180:
+        return "frozen"
+    if temp_k <= 240:
+        return "cold"
+    return "nominal"
+
+
+def _radiation_band(radiation: float | None) -> str | None:
+    """Return coarse radiation band."""
+    if radiation is None:
+        return None
+    if radiation >= 1.0:
+        return "hard"
+    if radiation >= 0.65:
+        return "elevated"
+    if radiation >= 0.35:
+        return "noticeable"
+    return "low"
+
+
+def _gravity_band(gravity_g: float | None) -> str | None:
+    """Return coarse gravity band."""
+    if gravity_g is None:
+        return None
+    if gravity_g >= 1.4:
+        return "high"
+    if gravity_g <= 0.35:
+        return "low"
+    if gravity_g <= 0.75:
+        return "light"
+    return "nominal"
+
+
+def _roughness_class(roughness: float | None) -> str | None:
+    """Return coarse terrain roughness class."""
+    if roughness is None:
+        return None
+    if roughness >= 0.78:
+        return "severe"
+    if roughness >= 0.58:
+        return "rough"
+    if roughness >= 0.35:
+        return "broken"
+    return "smooth"
+
+
+def _add_unique(values: list[str], value: str) -> None:
+    """Append a string if it is not already present."""
+    if value and value not in values:
+        values.append(value)
+
+
+def _derive_hazards(data: dict[str, Any]) -> tuple[list[str], int, str]:
+    """Derive first-pass hazard tags from known surface readings."""
+    hazards: list[str] = []
+    score = 0
+
+    terrain = str(data.get("terrain_code") or data.get("terrain") or "").lower()
+    tags = {str(tag).lower() for tag in _as_list(data.get("feature_tags"))}
+    temp_k = _float_or_none(data.get("temperature_k") or data.get("temperature"))
+    radiation = _float_or_none(data.get("radiation"))
+    gravity = _float_or_none(data.get("gravity") or data.get("gravity_g"))
+    roughness = _float_or_none(data.get("roughness"))
+
+    if "lava" in terrain or "thermal" in terrain:
+        _add_unique(hazards, "active thermal terrain")
+        score += 75
+    if "unlandable" in terrain:
+        _add_unique(hazards, "unlandable surface")
+        score += 90
+    if "steep" in tags:
+        _add_unique(hazards, "steep terrain")
+        score += 25
+    if "rough" in tags:
+        _add_unique(hazards, "broken ground")
+        score += 18
+
+    if temp_k is not None:
+        if temp_k >= 750:
+            _add_unique(hazards, "thermal rupture exposure")
+            score += 80
+        elif temp_k >= 330:
+            _add_unique(hazards, "heat stress")
+            score += 35
+        elif temp_k <= 120:
+            _add_unique(hazards, "cryogenic exposure")
+            score += 45
+        elif temp_k <= 180:
+            _add_unique(hazards, "severe cold")
+            score += 25
+
+    if radiation is not None:
+        if radiation >= 1.0:
+            _add_unique(hazards, "hard radiation")
+            score += 55
+        elif radiation >= 0.65:
+            _add_unique(hazards, "elevated radiation")
+            score += 25
+
+    if roughness is not None:
+        if roughness >= 0.78:
+            _add_unique(hazards, "severe surface roughness")
+            score += 28
+        elif roughness >= 0.58:
+            _add_unique(hazards, "rough traversal")
+            score += 12
+
+    if gravity is not None:
+        if gravity >= 1.4:
+            _add_unique(hazards, "high-gravity fatigue")
+            score += 20
+        elif gravity <= 0.35:
+            _add_unique(hazards, "low-gravity footing")
+            score += 12
+
+    score = max(0, min(100, score))
+    if score >= 75:
+        level = "severe"
+    elif score >= 45:
+        level = "high"
+    elif score >= 20:
+        level = "elevated"
+    elif hazards:
+        level = "low"
+    else:
+        level = "none"
+
+    return hazards, score, level
+
+
+def _direction_summary(directions: Mapping[str, Any]) -> dict[str, list[str]]:
+    """Summarize generated movement profiles for survey readouts."""
+    blocked: list[str] = []
+    rough: list[str] = []
+    easy: list[str] = []
+
+    for direction, raw_profile in directions.items():
+        profile = _as_dict(raw_profile)
+        if not profile:
+            continue
+
+        if profile.get("allowed") is False:
+            blocked.append(str(direction))
+            continue
+
+        severity = str(profile.get("severity") or "").lower()
+        if severity == "rough":
+            rough.append(str(direction))
+        elif severity == "easy":
+            easy.append(str(direction))
+
+    return {
+        "blocked_directions": blocked,
+        "rough_directions": rough,
+        "easy_directions": easy[:4],
+    }
+
+
+def _signature_confidence(system_name: str, body_id: str, x: int, y: int, signature: str, quality: int) -> str:
+    """Return deterministic confidence for a survey signature."""
+    roll = (_stable_int(system_name, body_id, x, y, signature) % 100) + int(quality) // 5
+    if roll >= 90:
+        return "strong"
+    if roll >= 55:
+        return "moderate"
+    return "trace"
+
+
+def _resource_signatures(
+    system_data: dict[str, Any],
+    body: dict[str, Any],
+    x: int,
+    y: int,
+    data: dict[str, Any],
+    quality: int,
+) -> list[str]:
+    """Return deterministic first-pass resource signatures."""
+    system_name = str(system_data.get("name", "Unknown System"))
+    body_id = str(body.get("id", data.get("body_id", "unknown-body")))
+    classification = str(body.get("classification", "")).lower()
+    terrain = str(data.get("terrain_code") or data.get("terrain") or "").lower()
+    tags = {str(tag).lower() for tag in _as_list(data.get("feature_tags"))}
+    temp_band = str(data.get("temperature_band") or "").lower()
+    radiation_band = str(data.get("radiation_band") or "").lower()
+
+    candidates: list[str] = []
+    if any(key in terrain for key in ("basalt", "lava", "mountain", "highland", "upland", "crater")):
+        candidates.extend(["silicate outcrops", "metal-bearing regolith"])
+    if any(key in terrain for key in ("ice", "frozen")) or "ice" in tags or temp_band in {"frozen", "cryogenic"}:
+        candidates.append("volatile ice")
+    if "dust" in terrain or "plain" in terrain:
+        candidates.append("fine regolith")
+    if "rocky" in classification or "moon" in str(body.get("kind", "")).lower():
+        candidates.append("exposed mineral veins")
+    if radiation_band in {"elevated", "hard"}:
+        candidates.append("irradiated surface deposits")
+
+    if not candidates:
+        candidates.append("general regolith sample")
+
+    signatures: list[str] = []
+    for candidate in candidates:
+        confidence = _signature_confidence(system_name, body_id, x, y, candidate, quality)
+        _add_unique(signatures, f"{confidence} {candidate}")
+
+    return signatures[:4]
+
+
+def _anomaly_signatures(
+    system_data: dict[str, Any],
+    body: dict[str, Any],
+    x: int,
+    y: int,
+    data: dict[str, Any],
+    quality: int,
+) -> list[str]:
+    """Return deterministic first-pass anomaly signatures."""
+    system_name = str(system_data.get("name", "Unknown System"))
+    body_id = str(body.get("id", data.get("body_id", "unknown-body")))
+    terrain = str(data.get("terrain_code") or data.get("terrain") or "").lower()
+    roughness = _float_or_none(data.get("roughness"))
+    radiation = _float_or_none(data.get("radiation"))
+    temp_k = _float_or_none(data.get("temperature_k") or data.get("temperature"))
+
+    anomalies: list[str] = []
+    if radiation is not None and radiation >= 1.0:
+        _add_unique(anomalies, "radiation discontinuity")
+    if temp_k is not None and (temp_k >= 750 or temp_k <= 120):
+        _add_unique(anomalies, "thermal irregularity")
+    if roughness is not None and roughness >= 0.78 and any(key in terrain for key in ("crater", "mountain")):
+        _add_unique(anomalies, "subsurface density contrast")
+
+    roll = (_stable_int(system_name, body_id, x, y, "survey-anomaly") % 100)
+    threshold = 6 + min(12, int(quality) // 10)
+    if roll < threshold:
+        choices = [
+            "albedo discontinuity",
+            "magnetic scatter",
+            "shallow void return",
+            "reflective inclusion",
+        ]
+        index = _stable_int(system_name, body_id, x, y, "survey-anomaly-kind") % len(choices)
+        _add_unique(anomalies, choices[index])
+
+    return anomalies[:3]
+
+
+def _apply_resolution_layers(
+    data: dict[str, Any],
+    system_data: dict[str, Any],
+    body: dict[str, Any],
+    x: int,
+    y: int,
+    *,
+    resolution: int,
+    quality: int,
+    sample: dict[str, Any] | None = None,
+    directions: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Add resolution-gated survey layers to a tile payload."""
+    resolution = max(1, int(resolution))
+    quality = max(1, int(quality))
+    sample = sample or {}
+    enriched = dict(data or {})
+
+    enriched["survey_resolution"] = resolution
+    enriched["scan_resolution_tier"] = _resolution_tier(resolution)
+    enriched["scan_layers"] = _resolution_layers(resolution)
+
+    if resolution >= 2:
+        roughness = _first_value(sample, "roughness")
+        if roughness is not None:
+            enriched["roughness"] = roughness
+
+        temp_k = _float_or_none(enriched.get("temperature_k") or enriched.get("temperature"))
+        radiation = _float_or_none(enriched.get("radiation"))
+        gravity = _float_or_none(enriched.get("gravity") or enriched.get("gravity_g"))
+        roughness_value = _float_or_none(enriched.get("roughness"))
+
+        temp_band = _temperature_band(temp_k)
+        radiation_band = _radiation_band(radiation)
+        gravity_band = _gravity_band(gravity)
+        roughness_label = _roughness_class(roughness_value)
+
+        if temp_band:
+            enriched["temperature_band"] = temp_band
+        if radiation_band:
+            enriched["radiation_band"] = radiation_band
+        if gravity_band:
+            enriched["gravity_band"] = gravity_band
+        if roughness_label:
+            enriched["roughness_class"] = roughness_label
+
+        hazards, hazard_score, hazard_level = _derive_hazards(enriched)
+        enriched["hazard_score"] = hazard_score
+        enriched["hazard_level"] = hazard_level
+        if hazards:
+            enriched["hazards"] = hazards
+            enriched["hazard"] = hazard_level
+
+        if directions:
+            enriched["traversal"] = _direction_summary(directions)
+
+    if resolution >= 3:
+        resources = _resource_signatures(system_data, body, x, y, enriched, quality)
+        if resources:
+            enriched["resource_signatures"] = resources
+
+        anomalies = _anomaly_signatures(system_data, body, x, y, enriched, quality)
+        if anomalies:
+            enriched["anomaly_signatures"] = anomalies
+
+        notes = []
+        if enriched.get("hazard_level") in {"high", "severe"}:
+            notes.append("high-resolution pass recommends remote verification before landing.")
+        if enriched.get("resource_signatures"):
+            notes.append("resource signatures are candidates, not confirmed extractable deposits.")
+        if enriched.get("anomaly_signatures"):
+            notes.append("anomaly signatures merit a focused follow-up survey.")
+        if notes:
+            enriched["survey_notes"] = notes
+
+    return enriched
+
+
+def _scan_tile_data(
+    system_data: dict[str, Any],
+    body: dict[str, Any],
+    x: int,
+    y: int,
+    *,
+    resolution: int,
+    quality: int,
+) -> dict[str, Any]:
     """
     Build the stored data payload for a scanned tile.
 
@@ -153,24 +577,32 @@ def _scan_tile_data(system_data: dict[str, Any], body: dict[str, Any], x: int, y
 
         if isinstance(view, Mapping):
             generated = dict(view)
-            raw = {
-                "terrain": (
-                    generated.get("terrain_name")
-                    or generated.get("terrain")
-                    or generated.get("terrain_label")
-                    or generated.get("name")
-                ),
-                "elevation_m": generated.get("elevation_m") or generated.get("elevation"),
-                "temperature_k": generated.get("temperature_k") or generated.get("temperature"),
-                "radiation": generated.get("radiation"),
-                "gravity": generated.get("gravity"),
-                "summary": generated.get("description") or generated.get("summary") or generated.get("desc"),
-            }
-            return compact_tile_data(raw)
+            sample = _as_dict(generated.get("sample"))
+            directions = _as_dict(generated.get("directions"))
+            compact = _compact_generated_payload(generated, sample)
+            return _apply_resolution_layers(
+                compact,
+                system_data,
+                body,
+                int(x),
+                int(y),
+                resolution=resolution,
+                quality=quality,
+                sample=sample,
+                directions=directions,
+            )
     except Exception:
         pass
 
-    return _surface_tile_payload(body, x, y)
+    return _apply_resolution_layers(
+        _surface_tile_payload(body, x, y),
+        system_data,
+        body,
+        int(x),
+        int(y),
+        resolution=resolution,
+        quality=quality,
+    )
 
 
 def _scan_points(center_x: int, center_y: int, radius: int) -> list[tuple[int, int]]:
@@ -313,17 +745,28 @@ def parse_scan_options(args: str) -> tuple[dict[str, Any], str]:
     return options, ""
 
 
-def _coverage_exists(owner_scope: str, owner_id: int, system_name: str, body_id: str, x: int, y: int, scan_type: str) -> bool:
-    """Return whether a matching coverage row already exists."""
-    return SurveyCoverage.objects.filter(
-        owner_scope=owner_scope,
-        owner_id=int(owner_id),
-        system_name=str(system_name),
-        body_id=str(body_id),
-        x=int(x),
-        y=int(y),
-        scan_type=str(scan_type),
-    ).exists()
+def _coverage_record(
+    owner_scope: str,
+    owner_id: int,
+    system_name: str,
+    body_id: str,
+    x: int,
+    y: int,
+    scan_type: str,
+) -> SurveyCoverage | None:
+    """Return an existing matching coverage row, if present."""
+    try:
+        return SurveyCoverage.objects.get(
+            owner_scope=owner_scope,
+            owner_id=int(owner_id),
+            system_name=str(system_name),
+            body_id=str(body_id),
+            x=int(x),
+            y=int(y),
+            scan_type=str(scan_type),
+        )
+    except SurveyCoverage.DoesNotExist:
+        return None
 
 
 def _resolve_orbital_scan_context(caller) -> tuple[dict[str, Any] | None, str]:
@@ -426,7 +869,7 @@ def _write_scan_records(
     ship = context["ship"]
 
     for x, y in points:
-        existed = _coverage_exists(
+        existing = _coverage_record(
             owner_scope,
             owner_id,
             system_name,
@@ -435,14 +878,40 @@ def _write_scan_records(
             int(y),
             SCAN_TERRAIN,
         )
+        existed = existing is not None
+        previous_resolution = int(existing.resolution or 0) if existing is not None else 0
+        previous_quality = int(existing.quality or 0) if existing is not None else 0
+        resolution_upgraded = existed and int(resolution) > previous_resolution
+        quality_improved = existed and int(quality) > previous_quality
+        if not existed:
+            coverage_update = "new"
+        elif resolution_upgraded:
+            coverage_update = "resolution_upgraded"
+        elif quality_improved:
+            coverage_update = "quality_improved"
+        else:
+            coverage_update = "refreshed"
 
-        data = _scan_tile_data(system_data, body, int(x), int(y))
+        best_resolution = max(previous_resolution, int(resolution))
+        data = _scan_tile_data(
+            system_data,
+            body,
+            int(x),
+            int(y),
+            resolution=resolution,
+            quality=quality,
+        )
         data.update(
             {
                 "scan_center": {"x": center_x, "y": center_y},
                 "scan_resolution": resolution,
+                "best_known_resolution": best_resolution,
+                "last_scan_resolution": resolution,
                 "sensor_quality": quality,
                 "source_ship_name": _ship_name(ship),
+                "coverage_update": coverage_update,
+                "previous_resolution": previous_resolution,
+                "previous_quality": previous_quality,
             }
         )
         data.update(metadata)
@@ -475,6 +944,11 @@ def _write_scan_records(
                 "resolution": resolution,
                 "quality": quality,
                 "existed": existed,
+                "previous_resolution": previous_resolution,
+                "previous_quality": previous_quality,
+                "resolution_upgraded": resolution_upgraded,
+                "quality_improved": quality_improved,
+                "coverage_update": coverage_update,
             }
         )
 

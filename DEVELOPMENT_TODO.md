@@ -12,7 +12,7 @@ move items forward as they are implemented, tested, or superseded.
 
 ## Next
 
-- [ ] Add richer survey scan progression beyond radius/resolution caps.
+- [x] Add richer survey scan progression beyond radius/resolution caps.
 - [ ] Add survey target selection improvements.
 - [ ] Add survey route/readout commands.
 - [ ] Add dataset valuation metadata.

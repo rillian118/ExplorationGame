@@ -147,6 +147,82 @@ def _format_number(value: float | int | None, *, decimals: int = 2) -> str:
     return f"{value:.{decimals}f}"
 
 
+def _list_values(data: dict[str, Any], *keys: str) -> list[str]:
+    """Return normalized string list values from the first populated key."""
+    for key in keys:
+        value = data.get(key)
+        if not value:
+            continue
+
+        if isinstance(value, (list, tuple, set)):
+            values = value
+        else:
+            values = [value]
+
+        result = []
+        for item in values:
+            if item is None or item == "":
+                continue
+            if isinstance(item, dict):
+                label = item.get("label") or item.get("name") or item.get("signature")
+                if label:
+                    result.append(str(label))
+                continue
+            result.append(str(item))
+
+        if result:
+            return result
+
+    return []
+
+
+def _counter_from_record_lists(records: list[dict[str, Any]], *keys: str) -> Counter:
+    """Count string values from list-like fields in record data."""
+    counter = Counter()
+    for record in records:
+        data = compact_tile_data(record.get("data") or {})
+        for value in _list_values(data, *keys):
+            counter[value] += 1
+    return counter
+
+
+def _format_values(values: list[str], *, limit: int = 3) -> str:
+    """Format a compact comma-separated value list."""
+    shown = values[:limit]
+    suffix = f", +{len(values) - limit} more" if len(values) > limit else ""
+    return ", ".join(shown) + suffix
+
+
+def _max_int_from_records(records: list[dict[str, Any]], key: str) -> int:
+    """Return max integer value found in record data for key."""
+    values = []
+    for record in records:
+        data = record.get("data") or {}
+        try:
+            values.append(int(data.get(key)))
+        except Exception:
+            continue
+    return max(values) if values else 0
+
+
+def _progression_hint(records: list[dict[str, Any]], current_resolution: int) -> str:
+    """Return next useful scan progression hint, if any."""
+    max_resolution = _max_int_from_records(records, "ship_survey_max_resolution")
+    if not max_resolution:
+        return ""
+
+    if current_resolution < min(max_resolution, 2):
+        return "Resolution 2 adds hazard classification, roughness, and traversal risk."
+
+    if current_resolution < min(max_resolution, 3):
+        return "Resolution 3 adds resource signatures, anomaly candidates, and site notes."
+
+    if current_resolution < 3 and current_resolution >= max_resolution:
+        return "Installed sensors are at their current resolution cap."
+
+    return ""
+
+
 def _direction(center_x: int, center_y: int, x: int, y: int) -> str:
     """Return compass relation from scan center."""
     dx = int(x) - int(center_x)
@@ -269,6 +345,38 @@ def render_orbital_scan_report(
     resolution_label = ", ".join(str(value) for value in resolutions if value) or "unknown"
     qualities = sorted({int(record.get("quality") or 0) for record in records})
     quality_label = ", ".join(str(value) for value in qualities if value) or "unknown"
+    upgraded_count = sum(1 for record in records if record.get("resolution_upgraded"))
+    quality_improved_count = sum(
+        1
+        for record in records
+        if record.get("quality_improved") and not record.get("resolution_upgraded")
+    )
+    refreshed_count = sum(
+        1
+        for record in records
+        if record.get("existed")
+        and not record.get("resolution_upgraded")
+        and not record.get("quality_improved")
+    )
+    coverage_parts = [f"{created_count} new"]
+    if upgraded_count:
+        coverage_parts.append(f"{upgraded_count} resolution upgraded")
+    if quality_improved_count:
+        coverage_parts.append(f"{quality_improved_count} quality improved")
+    if refreshed_count:
+        coverage_parts.append(f"{refreshed_count} refreshed/merged")
+
+    tier_counts = Counter()
+    scan_layers = set()
+    for record in records:
+        data = compact_tile_data(record.get("data") or {})
+        tier = data.get("scan_resolution_tier")
+        if tier:
+            tier_counts[str(tier)] += 1
+        scan_layers.update(_list_values(data, "scan_layers"))
+
+    current_resolution = max([value for value in resolutions if value] or [0])
+    progression_hint = _progression_hint(records, current_resolution)
 
     lines = [
         title,
@@ -278,8 +386,18 @@ def render_orbital_scan_report(
         footprint_label or f"Scan footprint: radius {radius}, {total} tile(s)",
         f"Scan resolution: {resolution_label}",
         f"Scan quality: {quality_label}",
-        f"Coverage update: {created_count} new, {updated_count} existing updated/merged.",
+        f"Coverage update: {', '.join(coverage_parts)}.",
     ]
+
+    if tier_counts:
+        tier_label = ", ".join(f"{tier}: {count}" for tier, count in tier_counts.most_common())
+        lines.append(f"Resolution tier: {tier_label}.")
+
+    if scan_layers:
+        lines.append(f"Scan layers: {', '.join(sorted(scan_layers))}.")
+
+    if progression_hint:
+        lines.append(f"Progression hint: {progression_hint}")
 
     if detail_lines:
         lines.extend(detail_lines)
@@ -366,10 +484,37 @@ def render_orbital_scan_report(
     if hazard_records:
         lines.append(f"Hazard summary: {len(hazard_records)} flagged tile(s).")
         for record in hazard_records:
+            data = compact_tile_data(record.get("data") or {})
             relation = _direction(center_x, center_y, record["x"], record["y"])
-            lines.append(f"  {record['x']},{record['y']}: {relation} of center")
+            hazards = _list_values(data, "hazards")
+            label = _format_values(hazards) if hazards else str(data.get("hazard") or "flagged")
+            lines.append(f"  {record['x']},{record['y']}: {relation} of center - {label}")
     else:
         lines.append("Hazard summary: no explicit hazard flags detected in this pass.")
+
+    resource_counts = _counter_from_record_lists(records, "resource_signatures", "resources")
+    if resource_counts:
+        lines.append("")
+        lines.append("Resource signatures:")
+        for signature, count in resource_counts.most_common(6):
+            lines.append(f"  {signature}: {count} tile(s)")
+
+    anomaly_records = []
+    for record in records:
+        data = compact_tile_data(record.get("data") or {})
+        anomalies = _list_values(data, "anomaly_signatures", "anomalies")
+        if anomalies:
+            anomaly_records.append((record, anomalies))
+
+    if anomaly_records:
+        lines.append("")
+        lines.append(f"Anomaly candidates: {len(anomaly_records)} tile(s).")
+        for record, anomalies in anomaly_records[:6]:
+            relation = _direction(center_x, center_y, record["x"], record["y"])
+            lines.append(
+                f"  {record['x']},{record['y']}: {relation} of center - "
+                f"{_format_values(anomalies)}"
+            )
 
     lines.append("")
     lines.append("Useful follow-up commands:")
