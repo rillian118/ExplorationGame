@@ -20,6 +20,12 @@ SURVEY_COMMAND_INDEX = [
     },
     {
         "access": "All",
+        "command": "survey scan target <x> <y>",
+        "summary": "Run a one-shot orbital survey centered on a surface coordinate.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
         "command": "survey scan radius <number>",
         "summary": "Request a wider orbital survey footprint, limited by ship capability.",
         "lock": "cmd:all()",
@@ -28,6 +34,24 @@ SURVEY_COMMAND_INDEX = [
         "access": "All",
         "command": "survey scan resolution <number>",
         "summary": "Request higher scan resolution, limited by ship capability.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "survey target",
+        "summary": "Show the current orbital survey body, default center, and saved target.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "survey target <x> <y>",
+        "summary": "Save a surface coordinate as the default center for future survey scans.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "survey target clear",
+        "summary": "Clear your saved survey target and return scans to the default orbital center.",
         "lock": "cmd:all()",
     },
     {

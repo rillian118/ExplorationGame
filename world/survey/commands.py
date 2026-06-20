@@ -17,9 +17,10 @@ from world.survey.dataset_objects import (
 from world.survey.map_readout import render_survey_detail, render_survey_map
 
 try:
-    from world.survey.scanning import parse_scan_options, run_orbital_survey_scan
+    from world.survey.scanning import parse_scan_options, render_survey_target, run_orbital_survey_scan
 except Exception:
     parse_scan_options = None
+    render_survey_target = None
     run_orbital_survey_scan = None
 
 from world.survey.services import (
@@ -37,8 +38,12 @@ class CmdSurvey(Command):
     Usage:
       survey
       survey scan
+      survey scan target <x> <y>
       survey scan radius <number>
       survey scan resolution <number>
+      survey target
+      survey target <x> <y>
+      survey target clear
       survey scan band
       survey scan band start y <number> [interval <seconds>]
       survey scan band status
@@ -89,6 +94,14 @@ class CmdSurvey(Command):
                 return
 
             caller.msg(run_orbital_survey_scan(caller, **options))
+            return
+
+        if subcmd == "target":
+            if render_survey_target is None:
+                caller.msg("Survey target selection is not installed.")
+                return
+
+            caller.msg(render_survey_target(caller, rest))
             return
 
         # Support both "survey map brief" and "survey map/brief".
@@ -163,7 +176,8 @@ class CmdSurvey(Command):
             return
 
         caller.msg(
-            "Usage: survey, survey scan [radius <number>] [resolution <number>], "
+            "Usage: survey, survey scan [target <x> <y>] [radius <number>] [resolution <number>], "
+            "survey target [<x> <y> or clear], "
             "survey scan band [start, status, pause, resume, step, or cancel], "
             "survey status, survey datasets, "
             "survey cartridges, survey map, survey map brief, survey map list, "

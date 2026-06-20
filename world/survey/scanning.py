@@ -40,6 +40,7 @@ from world.survey.services import actor_owner_key, upsert_coverage_tile
 DEFAULT_SCAN_RADIUS = 1
 DEFAULT_SCAN_RESOLUTION = 1
 DEFAULT_SCAN_QUALITY = 100
+SURVEY_TARGET_ATTR = "survey_scan_target"
 SURVEY_BAND_OPERATION_ATTR = "survey_band_operation"
 SURVEY_BAND_SCRIPT_KEY = "orbital_band_survey_timer"
 SURVEY_BAND_SCRIPT_PATH = "world.survey.scripts.OrbitalBandSurveyScript"
@@ -61,7 +62,7 @@ RESOLUTION_LAYER_LABELS = {
 
 
 SCAN_USAGE = (
-    "Usage: survey scan [radius <number>] [resolution <number>] or "
+    "Usage: survey scan [target <x> <y>] [radius <number>] [resolution <number>] or "
     "survey scan band [start, status, pause, resume, step, or cancel] "
     "[y <number>] [radius <number>] [resolution <number>] [interval <seconds>]"
 )
@@ -627,12 +628,90 @@ def _include_visual_scan_footprint(caller: Any) -> bool:
         return True
 
 
+def _read_survey_target(caller: Any) -> dict[str, Any]:
+    """Read caller's saved orbital survey target."""
+    try:
+        raw = caller.attributes.get(SURVEY_TARGET_ATTR)
+    except Exception:
+        raw = None
+
+    return dict(raw) if isinstance(raw, Mapping) else {}
+
+
+def _write_survey_target(caller: Any, target: dict[str, Any]) -> None:
+    """Persist caller's saved orbital survey target."""
+    caller.attributes.add(SURVEY_TARGET_ATTR, dict(target))
+
+
+def _clear_survey_target(caller: Any) -> None:
+    """Clear caller's saved orbital survey target."""
+    try:
+        caller.attributes.remove(SURVEY_TARGET_ATTR)
+    except Exception:
+        pass
+
+
+def _target_matches_context(target: dict[str, Any], context: dict[str, Any]) -> bool:
+    """Return whether a saved target still applies to the current orbital body."""
+    try:
+        return (
+            str(target.get("system_name")) == context["system_name"]
+            and str(target.get("body_id")) == context["body_id"]
+            and int(target.get("source_ship_id") or 0) == int(context["ship"].id)
+        )
+    except Exception:
+        return False
+
+
+def _parse_int_token(token: str, label: str) -> tuple[int | None, str]:
+    """Parse a coordinate token."""
+    try:
+        return int(token), ""
+    except Exception:
+        return None, f"{label} coordinate must be a number."
+
+
+def _parse_target_coordinates(tokens: list[str], start: int) -> tuple[int | None, int | None, int, str]:
+    """Parse x/y target coordinates from tokens starting at index."""
+    if start >= len(tokens):
+        return None, None, start, "Usage: survey scan target <x> <y>"
+
+    token = tokens[start].lower()
+    if token in {"x", "cx", "lon", "longitude"}:
+        if start + 3 >= len(tokens):
+            return None, None, start, "Usage: survey scan target x <number> y <number>"
+        x, error = _parse_int_token(tokens[start + 1], "Target x")
+        if error:
+            return None, None, start, error
+        if tokens[start + 2].lower() not in {"y", "cy", "lat", "latitude"}:
+            return None, None, start, "Usage: survey scan target x <number> y <number>"
+        y, error = _parse_int_token(tokens[start + 3], "Target y")
+        if error:
+            return None, None, start, error
+        return x, y, start + 4, ""
+
+    if start + 1 >= len(tokens):
+        return None, None, start, "Usage: survey scan target <x> <y>"
+
+    x, error = _parse_int_token(tokens[start], "Target x")
+    if error:
+        return None, None, start, error
+
+    y, error = _parse_int_token(tokens[start + 1], "Target y")
+    if error:
+        return None, None, start, error
+
+    return x, y, start + 2, ""
+
+
 def parse_scan_options(args: str) -> tuple[dict[str, Any], str]:
     """
     Parse player-facing survey scan options.
 
     Supported:
         survey scan
+        survey scan target 10 25
+        survey scan at 10 25 radius 2
         survey scan radius 2
         survey scan resolution 2
         survey scan radius 2 resolution 2
@@ -653,6 +732,9 @@ def parse_scan_options(args: str) -> tuple[dict[str, Any], str]:
         "resolution": DEFAULT_SCAN_RESOLUTION,
         "band_action": "status",
         "band_y": None,
+        "target_x": None,
+        "target_y": None,
+        "target_source": "",
         "interval": None,
     }
 
@@ -694,6 +776,35 @@ def parse_scan_options(args: str) -> tuple[dict[str, Any], str]:
                 continue
             except ValueError:
                 pass
+
+        if options["mode"] == "footprint" and token in {
+            "target",
+            "at",
+            "center",
+            "centre",
+            "coord",
+            "coords",
+            "coordinate",
+            "coordinates",
+        }:
+            x, y, next_i, error = _parse_target_coordinates(tokens, i + 1)
+            if error:
+                return options, error
+            options["target_x"] = x
+            options["target_y"] = y
+            options["target_source"] = "command target"
+            i = next_i
+            continue
+
+        if options["mode"] == "footprint" and token in {"x", "cx", "lon", "longitude"}:
+            x, y, next_i, error = _parse_target_coordinates(tokens, i)
+            if error:
+                return options, error
+            options["target_x"] = x
+            options["target_y"] = y
+            options["target_source"] = "command target"
+            i = next_i
+            continue
 
         if token in {"radius", "range"}:
             if i + 1 >= len(tokens):
@@ -821,6 +932,170 @@ def _resolve_orbital_scan_context(caller) -> tuple[dict[str, Any] | None, str]:
         "body_width": int(body_width),
         "body_height": int(body_height),
     }, ""
+
+
+def _clamp_target_to_context(
+    context: dict[str, Any],
+    x: int,
+    y: int,
+) -> tuple[int, int, list[str]]:
+    """Clamp target coordinates to the current body's survey grid."""
+    body_width = max(1, int(context["body_width"]))
+    body_height = max(1, int(context["body_height"]))
+    clipped_x = _clamp_int(int(x), minimum=0, maximum=body_width - 1)
+    clipped_y = _clamp_int(int(y), minimum=0, maximum=body_height - 1)
+    notes = []
+    if clipped_x != int(x) or clipped_y != int(y):
+        notes.append(
+            f"target {int(x)},{int(y)} clipped to {clipped_x},{clipped_y} by body bounds"
+        )
+    return clipped_x, clipped_y, notes
+
+
+def _target_from_context(context: dict[str, Any], x: int, y: int, *, requested_x: int | None = None, requested_y: int | None = None) -> dict[str, Any]:
+    """Build a saved survey target payload for this orbital context."""
+    return {
+        "system_name": context["system_name"],
+        "body_id": context["body_id"],
+        "body_name": context["body_name"],
+        "source_ship_id": int(context["ship"].id),
+        "source_ship_name": _ship_name(context["ship"]),
+        "x": int(x),
+        "y": int(y),
+        "requested_x": int(requested_x) if requested_x is not None else int(x),
+        "requested_y": int(requested_y) if requested_y is not None else int(y),
+        "body_width": int(context["body_width"]),
+        "body_height": int(context["body_height"]),
+        "updated_at": int(time.time()),
+    }
+
+
+def _resolve_scan_center(
+    caller: Any,
+    context: dict[str, Any],
+    *,
+    target_x: int | None,
+    target_y: int | None,
+    target_source: str = "",
+) -> tuple[int, int, str, list[str]]:
+    """Resolve final footprint scan center from command target, saved target, or default."""
+    notes: list[str] = []
+
+    if target_x is not None and target_y is not None:
+        x, y, target_notes = _clamp_target_to_context(context, int(target_x), int(target_y))
+        notes.extend(target_notes)
+        return x, y, target_source or "command target", notes
+
+    saved = _read_survey_target(caller)
+    if saved:
+        if _target_matches_context(saved, context):
+            try:
+                saved_x = int(saved.get("x"))
+                saved_y = int(saved.get("y"))
+            except Exception:
+                notes.append("saved survey target is incomplete and was ignored")
+            else:
+                x, y, target_notes = _clamp_target_to_context(context, saved_x, saved_y)
+                notes.extend(target_notes)
+                return x, y, "saved target", notes
+
+        else:
+            notes.append(
+                "saved survey target is for a different ship or body and was ignored"
+            )
+
+    x, y, target_notes = _clamp_target_to_context(
+        context,
+        int(context["center_x"]),
+        int(context["center_y"]),
+    )
+    notes.extend(target_notes)
+    return x, y, "default orbital center", notes
+
+
+def render_survey_target(caller: Any, args: str = "") -> str:
+    """Render, set, or clear the caller's saved orbital survey target."""
+    tokens = (args or "").split()
+    action = tokens[0].lower() if tokens else "status"
+
+    if action in {"clear", "cancel", "reset", "none"}:
+        _clear_survey_target(caller)
+        return "Cleared saved survey target."
+
+    context, error = _resolve_orbital_scan_context(caller)
+    saved = _read_survey_target(caller)
+    if error:
+        if saved:
+            lines = [
+                "Saved survey target",
+                f"  Body: {saved.get('system_name')}/{saved.get('body_name') or saved.get('body_id')}",
+                f"  Coordinates: {saved.get('x')},{saved.get('y')}",
+                f"  Ship: {saved.get('source_ship_name') or saved.get('source_ship_id')}",
+                "",
+                f"Current orbit unavailable: {error}",
+            ]
+            return "\n".join(lines)
+        return error
+
+    if action in {"status", "show", "info"}:
+        coord_start = -1
+    elif action in {"set", "target", "at", "center", "centre"}:
+        coord_start = 1
+    elif tokens:
+        coord_start = 0
+    else:
+        coord_start = -1
+
+    if coord_start >= 0:
+        x, y, next_i, coord_error = _parse_target_coordinates(tokens, coord_start)
+        if coord_error:
+            return "Usage: survey target <x> <y>, survey target clear"
+        if next_i < len(tokens):
+            return "Usage: survey target <x> <y>, survey target clear"
+        clipped_x, clipped_y, notes = _clamp_target_to_context(context, int(x), int(y))
+        target = _target_from_context(
+            context,
+            clipped_x,
+            clipped_y,
+            requested_x=int(x),
+            requested_y=int(y),
+        )
+        _write_survey_target(caller, target)
+        lines = [
+            "Saved survey target.",
+            f"  Body: {context['system_name']}/{context['body_name']}",
+            f"  Coordinates: {clipped_x},{clipped_y}",
+            f"  Ship: {_ship_name(context['ship'])}",
+        ]
+        if notes:
+            lines.append(f"  Note: {'; '.join(notes)}.")
+        lines.append("Use survey scan to scan this target, or survey scan target <x> <y> for a one-shot override.")
+        return "\n".join(lines)
+
+    default_x = int(context["center_x"])
+    default_y = int(context["center_y"])
+    lines = [
+        "Survey target",
+        f"  Current body: {context['system_name']}/{context['body_name']}",
+        f"  Body grid: 0-{int(context['body_width']) - 1} x, 0-{int(context['body_height']) - 1} y",
+        f"  Default scan center: {default_x},{default_y}",
+    ]
+
+    if saved:
+        if _target_matches_context(saved, context):
+            lines.append(f"  Saved target: {saved.get('x')},{saved.get('y')}")
+        else:
+            lines.append(
+                "  Saved target: ignored; it belongs to a different ship or body"
+            )
+    else:
+        lines.append("  Saved target: none")
+
+    lines.append("")
+    lines.append("Use survey target <x> <y> to save a target.")
+    lines.append("Use survey scan target <x> <y> for a one-shot scan center.")
+    lines.append("Use survey target clear to return to the default orbital center.")
+    return "\n".join(lines)
 
 
 def _ship_scan_limits(ship: Any, radius: int, resolution: int) -> tuple[int, int, int, int, int, list[str]]:
@@ -1153,6 +1428,9 @@ def run_orbital_survey_scan(
     mode: str = "footprint",
     band_action: str = "next",
     band_y: int | None = None,
+    target_x: int | None = None,
+    target_y: int | None = None,
+    target_source: str = "",
     interval: int | None = None,
 ) -> str:
     """
@@ -1175,14 +1453,37 @@ def run_orbital_survey_scan(
         return error
 
     ship = context["ship"]
-    center_x = context["center_x"]
-    center_y = context["center_y"]
+    center_x, center_y, center_source, target_notes = _resolve_scan_center(
+        caller,
+        context,
+        target_x=target_x,
+        target_y=target_y,
+        target_source=target_source,
+    )
     radius, resolution, sensor_quality, max_radius, max_resolution, limit_notes = _ship_scan_limits(
         ship,
         int(radius),
         int(resolution),
     )
-    points = _scan_points(center_x, center_y, radius)
+    limit_notes.extend(target_notes)
+    points = _bounded_scan_points(
+        center_x,
+        center_y,
+        radius,
+        int(context["body_width"]),
+        int(context["body_height"]),
+    )
+
+    if not points:
+        return "Survey scan produced no valid surface points for that target."
+
+    detail_lines = [
+        f"Target selection: {center_source}.",
+    ]
+    if center_source != "default orbital center":
+        detail_lines.append(
+            "Use survey target clear to return routine scans to the default orbital center."
+        )
 
     records, created_count, updated_count = _write_scan_records(
         context,
@@ -1196,6 +1497,7 @@ def run_orbital_survey_scan(
             "scan_radius": radius,
             "ship_survey_max_radius": max_radius,
             "ship_survey_max_resolution": max_resolution,
+            "scan_target_source": center_source,
         },
     )
 
@@ -1209,6 +1511,7 @@ def run_orbital_survey_scan(
         created_count=created_count,
         updated_count=updated_count,
         limit_notes=limit_notes,
+        detail_lines=detail_lines,
         include_visual=_include_visual_scan_footprint(caller),
     )
 

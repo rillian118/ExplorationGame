@@ -13,7 +13,7 @@ move items forward as they are implemented, tested, or superseded.
 ## Next
 
 - [x] Add richer survey scan progression beyond radius/resolution caps.
-- [ ] Add survey target selection improvements.
+- [x] Add survey target selection improvements.
 - [ ] Add survey route/readout commands.
 - [ ] Add dataset valuation metadata.
 - [ ] Decide the first shape of survey data market/sale mechanics.
