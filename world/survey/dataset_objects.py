@@ -14,8 +14,10 @@ from world.survey.models import SurveyDataset
 from world.survey.services import (
     BULK_DATASET_IMPORT_BATCH_SIZE,
     actor_owner_key,
+    format_valuation_brief,
     import_dataset_tiles_to_coverage_chunk,
     render_dataset_detail,
+    valuation_detail_lines,
 )
 
 
@@ -124,6 +126,7 @@ def _update_cartridge_metadata(obj: Any, dataset: SurveyDataset, creator: Any = 
     _set_attr(obj, "survey_dataset_body", f"{dataset.system_name}/{dataset.body_name or dataset.body_id}")
     _set_attr(obj, "survey_dataset_scan_type", dataset.scan_type)
     _set_attr(obj, "survey_dataset_tile_count", int(dataset.tile_count or 0))
+    _set_attr(obj, "survey_dataset_value", format_valuation_brief(dataset))
 
     if creator is not None:
         try:
@@ -198,7 +201,7 @@ def materialize_dataset_cartridge(caller: Any, dataset_id: int) -> str:
 
     return (
         f"Created {cartridge.key} ({cartridge.dbref}) for survey dataset "
-        f"#{dataset.id}."
+        f"#{dataset.id} ({format_valuation_brief(dataset)})."
     )
 
 
@@ -236,7 +239,8 @@ def render_cartridge_list(caller: Any) -> str:
         lines.append(
             f"  {obj.key} ({obj.dbref}) "
             f"[dataset #{dataset.id}, {dataset.tile_count} tiles, "
-            f"r{dataset.min_resolution}-{dataset.max_resolution}, {dataset.scan_type}]"
+            f"r{dataset.min_resolution}-{dataset.max_resolution}, "
+            f"{dataset.scan_type}, {format_valuation_brief(dataset)}]"
         )
 
     return "\n".join(lines)
@@ -521,6 +525,9 @@ def render_dataset_record_detail(dataset: SurveyDataset, *, cartridge: Any = Non
             f"  License: {dataset.license_mode}",
         ]
     )
+
+    lines.append("")
+    lines.extend(valuation_detail_lines(dataset))
 
     if dataset.description:
         lines.append("")

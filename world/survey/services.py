@@ -25,6 +25,7 @@ from world.survey.models import (
 
 
 BULK_DATASET_IMPORT_BATCH_SIZE = 500
+DATASET_VALUATION_VERSION = 1
 
 
 def actor_owner_key(actor: Any) -> tuple[str, int]:
@@ -89,6 +90,256 @@ def _merged_coverage_data(
         merged = dict(incoming_data or {})
         merged.update(existing_data or {})
     return merged
+
+
+def _payload_values(data: dict[str, Any], *keys: str) -> list[str]:
+    """Return normalized string values from scalar/list-like payload fields."""
+    for key in keys:
+        value = data.get(key)
+        if not value:
+            continue
+        values = value if isinstance(value, (list, tuple, set)) else [value]
+        result = [
+            str(item)
+            for item in values
+            if item is not None and item != "" and str(item).lower() != "none"
+        ]
+        if result:
+            return result
+    return []
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    """Return value as an int without letting legacy metadata break display."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _value_grade(value_points: int) -> str:
+    """Return coarse valuation grade."""
+    if value_points >= 2000:
+        return "exceptional"
+    if value_points >= 900:
+        return "valuable"
+    if value_points >= 300:
+        return "useful"
+    return "routine"
+
+
+def calculate_dataset_valuation(rows: Iterable[SurveyCoverage]) -> dict[str, Any]:
+    """
+    Calculate first-pass dataset valuation metadata from coverage rows.
+
+    This is a market-facing estimate, not final currency. Later market demand,
+    ownership, licensing, age, and buyer-specific needs can adjust it.
+    """
+    rows = list(rows)
+    tile_count = len(rows)
+    if not rows:
+        return {
+            "version": DATASET_VALUATION_VERSION,
+            "points": 0,
+            "grade": "empty",
+            "basis": "survey dataset valuation v1",
+            "factors": {},
+            "counts": {"tiles": 0},
+            "tags": [],
+            "notes": ["No tiles were included in this dataset."],
+        }
+
+    terrain = Counter()
+    resources = Counter()
+    anomalies = Counter()
+    hazards = Counter()
+    environment_tags = Counter()
+    resolutions: list[int] = []
+    qualities: list[int] = []
+    hazard_tiles = 0
+    resource_tiles = 0
+    anomaly_tiles = 0
+
+    for row in rows:
+        data = dict(row.data or {})
+        resolutions.append(int(row.resolution or 0))
+        qualities.append(int(row.quality or 0))
+
+        terrain_label = (
+            data.get("terrain")
+            or data.get("terrain_label")
+            or data.get("terrain_name")
+            or row.scan_type
+        )
+        if terrain_label:
+            terrain[str(terrain_label).lower()] += 1
+
+        row_hazards = _payload_values(data, "hazards", "hazard")
+        if row_hazards:
+            hazard_tiles += 1
+            for hazard in row_hazards:
+                hazards[hazard] += 1
+
+        row_resources = _payload_values(data, "resource_signatures", "resources")
+        if row_resources:
+            resource_tiles += 1
+            for resource in row_resources:
+                resources[resource] += 1
+
+        row_anomalies = _payload_values(data, "anomaly_signatures", "anomalies")
+        if row_anomalies:
+            anomaly_tiles += 1
+            for anomaly in row_anomalies:
+                anomalies[anomaly] += 1
+
+        for key in ("temperature_band", "radiation_band", "gravity_band", "roughness_class"):
+            value = data.get(key)
+            if value and str(value).lower() not in {"nominal", "low", "smooth", "none"}:
+                environment_tags[f"{key}:{value}"] += 1
+
+    max_resolution = max(resolutions) if resolutions else 0
+    min_resolution = min(resolutions) if resolutions else 0
+    avg_quality = int(sum(qualities) / len(qualities)) if qualities else 0
+    terrain_variety = len(terrain)
+    resource_variety = len(resources)
+    anomaly_variety = len(anomalies)
+    hazard_variety = len(hazards)
+
+    base_points = tile_count * 10
+    resolution_points = sum(max(0, int(value) - 1) * 8 for value in resolutions)
+    quality_points = int(tile_count * max(0, avg_quality - 50) / 10)
+    variety_points = terrain_variety * 20
+    hazard_points = hazard_tiles * 18 + hazard_variety * 25
+    resource_points = resource_tiles * 35 + resource_variety * 55
+    anomaly_points = anomaly_tiles * 60 + anomaly_variety * 90
+    environment_points = sum(environment_tags.values()) * 8 + len(environment_tags) * 25
+
+    factors = {
+        "tile_coverage": base_points,
+        "resolution": resolution_points,
+        "sensor_quality": quality_points,
+        "terrain_variety": variety_points,
+        "hazards": hazard_points,
+        "resources": resource_points,
+        "anomalies": anomaly_points,
+        "environment": environment_points,
+    }
+    points = int(sum(factors.values()))
+    grade = _value_grade(points)
+
+    tags = []
+    if hazard_tiles:
+        tags.append("hazard")
+    if resource_tiles:
+        tags.append("resource")
+    if anomaly_tiles:
+        tags.append("anomaly")
+    if max_resolution >= 3:
+        tags.append("high_resolution")
+    if terrain_variety >= 4:
+        tags.append("terrain_variety")
+    if environment_tags:
+        tags.append("environmental_extremes")
+
+    notes = [
+        f"{tile_count} tile(s), r{min_resolution}-{max_resolution}, average quality {avg_quality}.",
+    ]
+    if resource_tiles:
+        notes.append(f"{resource_tiles} tile(s) contain resource signatures.")
+    if anomaly_tiles:
+        notes.append(f"{anomaly_tiles} tile(s) contain anomaly candidates.")
+    if hazard_tiles:
+        notes.append(f"{hazard_tiles} tile(s) carry hazard flags.")
+    if max_resolution < 3:
+        notes.append("Higher-resolution rescans may improve market value.")
+
+    return {
+        "version": DATASET_VALUATION_VERSION,
+        "basis": "survey dataset valuation v1",
+        "points": points,
+        "grade": grade,
+        "factors": factors,
+        "counts": {
+            "tiles": tile_count,
+            "min_resolution": min_resolution,
+            "max_resolution": max_resolution,
+            "avg_quality": avg_quality,
+            "terrain_variety": terrain_variety,
+            "hazard_tiles": hazard_tiles,
+            "hazard_variety": hazard_variety,
+            "resource_tiles": resource_tiles,
+            "resource_variety": resource_variety,
+            "anomaly_tiles": anomaly_tiles,
+            "anomaly_variety": anomaly_variety,
+            "environment_markers": sum(environment_tags.values()),
+        },
+        "top": {
+            "terrain": terrain.most_common(5),
+            "hazards": hazards.most_common(5),
+            "resources": resources.most_common(5),
+            "anomalies": anomalies.most_common(5),
+            "environment": environment_tags.most_common(5),
+        },
+        "tags": tags,
+        "notes": notes,
+    }
+
+
+def dataset_valuation(dataset: SurveyDataset) -> dict[str, Any]:
+    """Return stored valuation metadata from a dataset."""
+    metadata = dataset.metadata or {}
+    valuation = metadata.get("valuation")
+    return dict(valuation) if isinstance(valuation, dict) else {}
+
+
+def format_valuation_brief(dataset: SurveyDataset) -> str:
+    """Return compact valuation label for dataset lists."""
+    valuation = dataset_valuation(dataset)
+    if not valuation:
+        return "value unassessed"
+    return f"value {_safe_int(valuation.get('points'))} VP, {valuation.get('grade') or 'ungraded'}"
+
+
+def valuation_detail_lines(dataset: SurveyDataset) -> list[str]:
+    """Return player-facing valuation detail lines."""
+    valuation = dataset_valuation(dataset)
+    if not valuation:
+        return ["Valuation: not assessed"]
+
+    lines = [
+        f"Valuation: {_safe_int(valuation.get('points'))} VP ({valuation.get('grade') or 'ungraded'})",
+    ]
+
+    tags = valuation.get("tags") or []
+    if tags:
+        lines.append(f"Value tags: {', '.join(str(tag) for tag in tags)}")
+
+    counts = valuation.get("counts") or {}
+    if counts:
+        lines.append(
+            "Value basis: "
+            f"{counts.get('tiles', dataset.tile_count)} tiles, "
+            f"r{counts.get('min_resolution', dataset.min_resolution)}-"
+            f"{counts.get('max_resolution', dataset.max_resolution)}, "
+            f"avg quality {counts.get('avg_quality', 'unknown')}"
+        )
+
+    factors = valuation.get("factors") or {}
+    if factors:
+        lines.append("Value factors:")
+        for label, points in sorted(factors.items(), key=lambda item: _safe_int(item[1]), reverse=True):
+            factor_points = _safe_int(points)
+            if factor_points <= 0:
+                continue
+            lines.append(f"  {label.replace('_', ' ')}: {factor_points} VP")
+
+    notes = valuation.get("notes") or []
+    if notes:
+        lines.append("Value notes:")
+        for note in notes[:5]:
+            lines.append(f"  {note}")
+
+    return lines
 
 
 def summarize_coverage(owner_scope: str, owner_id: int) -> dict[str, Any]:
@@ -264,6 +515,7 @@ def export_dataset_from_coverage(
 
     first = rows[0]
     resolutions = [int(row.resolution or 0) for row in rows]
+    valuation = calculate_dataset_valuation(rows)
 
     dataset = SurveyDataset.objects.create(
         name=name,
@@ -284,7 +536,8 @@ def export_dataset_from_coverage(
                 "scan_type": scan_type,
                 "system_name": system_name,
                 "body_id": body_id,
-            }
+            },
+            "valuation": valuation,
         },
     )
 
@@ -627,7 +880,7 @@ def render_dataset_list(owner_scope: str, owner_id: int) -> str:
             f"  #{dataset.id}: {dataset.name} "
             f"[{dataset.system_name}/{dataset.body_name or dataset.body_id}, "
             f"{dataset.tile_count} tiles, r{dataset.min_resolution}-{dataset.max_resolution}, "
-            f"{dataset.scan_type}]"
+            f"{dataset.scan_type}, {format_valuation_brief(dataset)}]"
         )
 
     return "\n".join(lines)
@@ -655,6 +908,9 @@ def render_dataset_detail(dataset_id: int, *, viewer_scope: str, viewer_id: int)
         f"  Copyable: {'yes' if dataset.is_copyable else 'no'}",
         f"  License: {dataset.license_mode}",
     ]
+
+    lines.append("")
+    lines.extend(valuation_detail_lines(dataset))
 
     if dataset.description:
         lines.append("")
@@ -684,5 +940,5 @@ def render_export_result(caller: Any, name: str) -> str:
 
     return (
         f"Created survey dataset #{dataset.id}: {dataset.name} "
-        f"({dataset.tile_count} tiles)."
+        f"({dataset.tile_count} tiles, {format_valuation_brief(dataset)})."
     )
