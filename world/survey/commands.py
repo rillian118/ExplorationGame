@@ -15,6 +15,7 @@ from world.survey.dataset_objects import (
     render_dataset_or_cartridge_detail,
 )
 from world.survey.map_readout import render_survey_detail, render_survey_map
+from world.survey.route_readout import render_survey_route
 
 try:
     from world.survey.scanning import parse_scan_options, render_survey_target, run_orbital_survey_scan
@@ -44,6 +45,8 @@ class CmdSurvey(Command):
       survey target
       survey target <x> <y>
       survey target clear
+      survey route <x1> <y1> <x2> <y2>
+      survey route target <x> <y>
       survey scan band
       survey scan band start y <number> [interval <seconds>]
       survey scan band status
@@ -102,6 +105,10 @@ class CmdSurvey(Command):
                 return
 
             caller.msg(render_survey_target(caller, rest))
+            return
+
+        if subcmd in ("route", "path", "readout"):
+            caller.msg(render_survey_route(caller, rest))
             return
 
         # Support both "survey map brief" and "survey map/brief".
@@ -178,6 +185,7 @@ class CmdSurvey(Command):
         caller.msg(
             "Usage: survey, survey scan [target <x> <y>] [radius <number>] [resolution <number>], "
             "survey target [<x> <y> or clear], "
+            "survey route <x1> <y1> <x2> <y2>, survey route target <x> <y>, "
             "survey scan band [start, status, pause, resume, step, or cancel], "
             "survey status, survey datasets, "
             "survey cartridges, survey map, survey map brief, survey map list, "

@@ -56,6 +56,18 @@ SURVEY_COMMAND_INDEX = [
     },
     {
         "access": "All",
+        "command": "survey route <x1> <y1> <x2> <y2>",
+        "summary": "Read out known survey data along a straight-line route.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "survey route target <x> <y>",
+        "summary": "Read out a route from your current/saved survey center to a target coordinate.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
         "command": "survey scan band",
         "summary": "Show the active timed orbital band survey status.",
         "lock": "cmd:all()",
