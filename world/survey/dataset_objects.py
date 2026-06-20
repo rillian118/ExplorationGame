@@ -118,6 +118,54 @@ def _cartridge_key(dataset: SurveyDataset) -> str:
     return f"Survey Data Cartridge: {dataset.name}"
 
 
+def _cartridge_aliases(dataset: SurveyDataset) -> list[str]:
+    """Return exact search aliases for a dataset cartridge."""
+    aliases = [
+        f"dataset {dataset.id}",
+        f"survey dataset {dataset.id}",
+        f"cartridge {dataset.id}",
+        str(dataset.id),
+    ]
+
+    dataset_name = str(dataset.name or "").strip()
+    if dataset_name:
+        aliases.extend(
+            [
+                dataset_name,
+                f"cartridge {dataset_name}",
+                f"survey cartridge {dataset_name}",
+                f"survey data cartridge {dataset_name}",
+                f"survey data cartridge: {dataset_name}",
+            ]
+        )
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for alias in aliases:
+        alias = str(alias).strip()
+        if not alias:
+            continue
+        key = alias.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(alias)
+    return normalized
+
+
+def sync_cartridge_aliases(obj: Any, dataset: SurveyDataset | None = None) -> None:
+    """Ensure a cartridge has exact aliases for its linked dataset."""
+    dataset = dataset or get_dataset_for_cartridge(obj)
+    if dataset is None:
+        return
+
+    for alias in _cartridge_aliases(dataset):
+        try:
+            obj.aliases.add(alias)
+        except Exception:
+            pass
+
+
 def _update_cartridge_metadata(obj: Any, dataset: SurveyDataset, creator: Any = None) -> None:
     """Store dataset metadata on an object."""
     _set_attr(obj, SURVEY_DATASET_ID_ATTR, int(dataset.id))
@@ -189,15 +237,8 @@ def materialize_dataset_cartridge(caller: Any, dataset_id: int) -> str:
         home=home,
     )
 
-    try:
-        cartridge.aliases.add(f"dataset {dataset.id}")
-        cartridge.aliases.add(f"survey dataset {dataset.id}")
-        cartridge.aliases.add(f"cartridge {dataset.id}")
-        cartridge.aliases.add(str(dataset.id))
-    except Exception:
-        pass
-
     _update_cartridge_metadata(cartridge, dataset, creator=caller)
+    sync_cartridge_aliases(cartridge, dataset)
 
     return (
         f"Created {cartridge.key} ({cartridge.dbref}) for survey dataset "

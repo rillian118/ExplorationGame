@@ -42,6 +42,15 @@ class SurveyDataCartridge(Object):
             "dataset for transport, trade, sale, or later upload."
         )
 
+    def at_init(self):
+        super().at_init()
+        try:
+            from world.survey.dataset_objects import sync_cartridge_aliases
+
+            sync_cartridge_aliases(self)
+        except Exception:
+            pass
+
     def get_display_name(self, looker=None, **kwargs):
         try:
             from world.survey.dataset_objects import get_dataset_for_cartridge
