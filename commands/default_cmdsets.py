@@ -18,7 +18,7 @@ from evennia import default_cmds # type: ignore
 from world.space.cmdsets import SpaceCmdSet
 from world.surface.overlay_commands import SurfaceOverlayCmdSet
 from world.surface.cleanup_commands import CmdSurfaceCleanupSweep, CmdSurfaceCleanupHere
-from world.survey.commands import SurveyCmdSet
+from world.survey.commands import CmdSurveyLook, SurveyCmdSet
 from world.player.commands import PlayerCmdSet
 
 class CharacterCmdSet(default_cmds.CharacterCmdSet):
@@ -38,6 +38,7 @@ class CharacterCmdSet(default_cmds.CharacterCmdSet):
         #
         # any commands you add below will overload the default ones.
         #
+        self.add(CmdSurveyLook())
         self.add(SpaceCmdSet())
         self.add(SurfaceOverlayCmdSet())
         self.add(SurveyCmdSet())

@@ -4,14 +4,16 @@ Survey command group.
 
 from __future__ import annotations
 
-from evennia import Command  # type: ignore
+from evennia import Command, default_cmds  # type: ignore
 from evennia.commands.cmdset import CmdSet  # type: ignore
 
 from world.survey.command_index import render_survey_command_index
 from world.survey.dataset_objects import (
+    find_inventory_cartridge_exact,
     load_cartridge_into_coverage,
     materialize_dataset_cartridge,
     render_cartridge_list,
+    render_cartridge_detail,
     render_dataset_or_cartridge_detail,
 )
 from world.survey.map_readout import render_survey_detail, render_survey_map
@@ -30,6 +32,32 @@ from world.survey.services import (
     render_dataset_list,
     render_export_result,
 )
+
+
+class CmdSurveyLook(default_cmds.CmdLook):
+    """
+    Look command with exact survey cartridge resolution before fuzzy search.
+    """
+
+    key = "look"
+    aliases = ["l", "ls"]
+
+    def func(self):
+        caller = self.caller
+        query = (self.args or "").strip()
+        if query.lower().startswith("at "):
+            query = query[3:].strip()
+
+        if query:
+            cartridge = find_inventory_cartridge_exact(caller, query)
+            if cartridge is not None:
+                self.msg(
+                    text=(render_cartridge_detail(cartridge, looker=caller), {"type": "look"}),
+                    options=None,
+                )
+                return
+
+        super().func()
 
 
 class CmdSurvey(Command):

@@ -493,8 +493,8 @@ def run_survey_cartridge_load_tick(caller: Any) -> tuple[str, bool]:
     return _perform_load_step(caller)
 
 
-def _matches_object_query(obj: Any, query: str) -> bool:
-    """Return whether an inventory object matches a loose user query."""
+def _matches_object_query_exact(obj: Any, query: str) -> bool:
+    """Return whether an inventory object exactly matches a user query."""
     q = (query or "").strip().lower()
     if not q:
         return False
@@ -508,7 +508,7 @@ def _matches_object_query(obj: Any, query: str) -> bool:
         return True
 
     key = str(getattr(obj, "key", "") or "").lower()
-    if q == key or q in key:
+    if q == key:
         return True
 
     try:
@@ -522,13 +522,64 @@ def _matches_object_query(obj: Any, query: str) -> bool:
     if dataset_id is not None and q in {str(dataset_id), f"dataset {dataset_id}", f"cartridge {dataset_id}"}:
         return True
 
+    dataset_name = str(_get_attr(obj, "survey_dataset_name", "") or "").strip()
+    dataset = get_dataset_for_cartridge(obj)
+    if dataset is not None:
+        dataset_name = str(dataset.name or "").strip()
+
+    if dataset_name:
+        name = dataset_name.lower()
+        exact_names = {
+            name,
+            f"survey data cartridge: {name}",
+            f"survey data cartridge {name}",
+            f"survey cartridge {name}",
+            f"cartridge {name}",
+        }
+        if q in exact_names:
+            return True
+
     return False
+
+
+def _matches_object_query(obj: Any, query: str) -> bool:
+    """Return whether an inventory object matches a loose user query."""
+    q = (query or "").strip().lower()
+    if not q:
+        return False
+
+    if _matches_object_query_exact(obj, q):
+        return True
+
+    key = str(getattr(obj, "key", "") or "").lower()
+    if q in key:
+        return True
+
+    return False
+
+
+def find_inventory_cartridge_exact(caller: Any, query: str):
+    """
+    Resolve a survey cartridge from caller inventory using exact names only.
+    """
+    matches = [
+        obj for obj in _iter_inventory_cartridges(caller) if _matches_object_query_exact(obj, query)
+    ]
+
+    if not matches:
+        return None
+
+    return matches[0]
 
 
 def find_inventory_cartridge(caller: Any, query: str):
     """
     Resolve a survey cartridge from caller inventory.
     """
+    exact_match = find_inventory_cartridge_exact(caller, query)
+    if exact_match is not None:
+        return exact_match
+
     matches = [obj for obj in _iter_inventory_cartridges(caller) if _matches_object_query(obj, query)]
 
     if not matches:
