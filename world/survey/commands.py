@@ -6,7 +6,13 @@ from __future__ import annotations
 
 from evennia import Command, default_cmds  # type: ignore
 from evennia.commands.cmdset import CmdSet  # type: ignore
+from evennia.commands.default.muxcommand import MuxCommand  # type: ignore
 
+from world.survey.commerce import (
+    handle_survey_exchange_admin_command,
+    handle_survey_exchange_command,
+    handle_survey_trade_command,
+)
 from world.survey.command_index import render_survey_command_index
 from world.survey.dataset_objects import (
     find_inventory_cartridge_exact,
@@ -96,6 +102,14 @@ class CmdSurvey(Command):
       survey load <cartridge>
       survey load status
       survey load cancel
+      survey exchange
+      survey exchange appraise <dataset id>
+      survey exchange sell <dataset id> confirm
+      survey trade offers
+      survey trade offer <player> <dataset id> <transfer|license> <credits>
+      survey trade accept <offer id>
+      survey trade decline <offer id>
+      survey trade cancel <offer id>
     """
 
     key = "survey"
@@ -210,6 +224,17 @@ class CmdSurvey(Command):
             caller.msg(load_cartridge_into_coverage(caller, rest))
             return
 
+        if subcmd in ("exchange", "market"):
+            caller.msg(handle_survey_exchange_command(caller, rest))
+            return
+
+        if subcmd in ("trade", "offer", "offers"):
+            trade_args = rest
+            if subcmd in ("offer", "offers"):
+                trade_args = f"{subcmd} {rest}".strip()
+            caller.msg(handle_survey_trade_command(caller, trade_args))
+            return
+
         caller.msg(
             "Usage: survey, survey scan [target <x> <y>] [radius <number>] [resolution <number>], "
             "survey target [<x> <y> or clear], "
@@ -219,8 +244,26 @@ class CmdSurvey(Command):
             "survey cartridges, survey map, survey map brief, survey map list, "
             "survey detail <x> <y>, survey inspect <id or cartridge>, "
             "survey export <name>, survey materialize <dataset id>, "
-            "survey load <cartridge>, survey load status, survey load cancel"
+            "survey load <cartridge>, survey load status, survey load cancel, "
+            "survey exchange, survey trade offers"
         )
+
+
+class CmdSurveyExchangeAdmin(MuxCommand):
+    """
+    Mark the current room as an NPC survey exchange.
+
+    Usage:
+      @surveyexchange <name>
+      @surveyexchange/clear
+    """
+
+    key = "@surveyexchange"
+    locks = "cmd:perm(Builder)"
+    help_category = "Survey"
+
+    def func(self):
+        self.caller.msg(handle_survey_exchange_admin_command(self.caller, self.args, self.switches))
 
 
 class SurveyCmdSet(CmdSet):
@@ -232,3 +275,4 @@ class SurveyCmdSet(CmdSet):
 
     def at_cmdset_creation(self):
         self.add(CmdSurvey())
+        self.add(CmdSurveyExchangeAdmin())

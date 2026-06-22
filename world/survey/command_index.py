@@ -186,6 +186,66 @@ SURVEY_COMMAND_INDEX = [
         "summary": "Cancel the active survey cartridge load operation.",
         "lock": "cmd:all()",
     },
+    {
+        "access": "All",
+        "command": "survey exchange",
+        "summary": "Show the local NPC survey exchange, if one is available.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "survey exchange appraise <dataset id>",
+        "summary": "Appraise an owned dataset for local NPC exchange buyout.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "survey exchange sell <dataset id> confirm",
+        "summary": "Sell an owned dataset to the local NPC exchange as an exclusive buyout.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "survey trade offers",
+        "summary": "List pending spontaneous player-to-player survey trade offers.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "survey trade offer <player> <dataset id> <transfer|license> <credits>",
+        "summary": "Offer a nearby player a priced transfer or license for survey data.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "survey trade accept <offer id>",
+        "summary": "Accept a pending room-based survey trade offer.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "survey trade decline <offer id>",
+        "summary": "Decline a pending survey trade offer.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "All",
+        "command": "survey trade cancel <offer id>",
+        "summary": "Cancel a survey trade offer you created.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "Builder",
+        "command": "@surveyexchange <name>",
+        "summary": "Mark the current room as an NPC survey exchange.",
+        "lock": "cmd:perm(Builders)",
+    },
+    {
+        "access": "Builder",
+        "command": "@surveyexchange/clear",
+        "summary": "Clear the NPC survey exchange marker from the current room.",
+        "lock": "cmd:perm(Builders)",
+    },
 ]
 
 

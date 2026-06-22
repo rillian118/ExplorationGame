@@ -558,6 +558,13 @@ def export_dataset_from_coverage(
     ]
 
     SurveyDatasetTile.objects.bulk_create(tiles)
+
+    try:
+        from world.survey.commerce import ensure_dataset_lineage
+
+        ensure_dataset_lineage(dataset)
+    except Exception:
+        pass
     return dataset
 
 
@@ -908,6 +915,13 @@ def render_dataset_detail(dataset_id: int, *, viewer_scope: str, viewer_id: int)
         f"  Copyable: {'yes' if dataset.is_copyable else 'no'}",
         f"  License: {dataset.license_mode}",
     ]
+
+    try:
+        from world.survey.commerce import copy_lineage_detail_lines
+
+        lines.extend(copy_lineage_detail_lines(dataset))
+    except Exception:
+        pass
 
     lines.append("")
     lines.extend(valuation_detail_lines(dataset))

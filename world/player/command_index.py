@@ -36,6 +36,30 @@ PLAYER_COMMAND_INDEX = [
         "summary": "Reset one player preference to its default.",
         "lock": "cmd:all()",
     },
+    {
+        "access": "All",
+        "command": "player credits",
+        "summary": "Show your current credit balance.",
+        "lock": "cmd:all()",
+    },
+    {
+        "access": "Builder",
+        "command": "@credits <player>",
+        "summary": "Show a player or character credit balance.",
+        "lock": "cmd:perm(Builders)",
+    },
+    {
+        "access": "Builder",
+        "command": "@credits/set <player>=<amount>",
+        "summary": "Set a player or character credit balance.",
+        "lock": "cmd:perm(Builders)",
+    },
+    {
+        "access": "Builder",
+        "command": "@credits/grant <player>=<amount>",
+        "summary": "Grant credits to a player or character.",
+        "lock": "cmd:perm(Builders)",
+    },
 ]
 
 

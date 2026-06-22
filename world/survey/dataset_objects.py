@@ -175,6 +175,13 @@ def _update_cartridge_metadata(obj: Any, dataset: SurveyDataset, creator: Any = 
     _set_attr(obj, "survey_dataset_scan_type", dataset.scan_type)
     _set_attr(obj, "survey_dataset_tile_count", int(dataset.tile_count or 0))
     _set_attr(obj, "survey_dataset_value", format_valuation_brief(dataset))
+    try:
+        from world.survey.commerce import lineage_copy_summary
+
+        copy_summary = lineage_copy_summary(dataset)
+        _set_attr(obj, "survey_dataset_copy_count", int(copy_summary.get("total") or 0))
+    except Exception:
+        pass
 
     if creator is not None:
         try:
@@ -240,9 +247,26 @@ def materialize_dataset_cartridge(caller: Any, dataset_id: int) -> str:
     _update_cartridge_metadata(cartridge, dataset, creator=caller)
     sync_cartridge_aliases(cartridge, dataset)
 
+    copy_note = ""
+    try:
+        from world.survey.commerce import record_copy_event
+        from world.survey.models import SurveyCopyEvent
+
+        _event, summary = record_copy_event(
+            source_dataset=dataset,
+            event_type=SurveyCopyEvent.EVENT_CARTRIDGE,
+            actor=caller,
+            object_id=getattr(cartridge, "id", None),
+            metadata={"cartridge_key": getattr(cartridge, "key", "")},
+        )
+        _update_cartridge_metadata(cartridge, dataset, creator=caller)
+        copy_note = f" Known lineage copies: {int(summary.get('total') or 0)}."
+    except Exception:
+        pass
+
     return (
         f"Created {cartridge.key} ({cartridge.dbref}) for survey dataset "
-        f"#{dataset.id} ({format_valuation_brief(dataset)})."
+        f"#{dataset.id} ({format_valuation_brief(dataset)}).{copy_note}"
     )
 
 
@@ -617,6 +641,13 @@ def render_dataset_record_detail(dataset: SurveyDataset, *, cartridge: Any = Non
             f"  License: {dataset.license_mode}",
         ]
     )
+
+    try:
+        from world.survey.commerce import copy_lineage_detail_lines
+
+        lines.extend(copy_lineage_detail_lines(dataset))
+    except Exception:
+        pass
 
     lines.append("")
     lines.extend(valuation_detail_lines(dataset))
