@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 import shlex
 from collections import Counter
+from collections.abc import Mapping
 from datetime import timedelta
 from typing import Any
 
@@ -183,7 +184,7 @@ def get_exchange_context(caller: Any) -> dict[str, Any] | None:
         return None
 
     raw = _read_attr(room, SURVEY_EXCHANGE_ATTR)
-    if not isinstance(raw, dict) or not raw.get("enabled"):
+    if not isinstance(raw, Mapping) or not raw.get("enabled"):
         return None
 
     data = dict(raw)
