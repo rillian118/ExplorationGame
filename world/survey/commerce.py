@@ -507,7 +507,89 @@ def _copy_modifier(dataset: SurveyDataset) -> tuple[float, dict[str, Any]]:
     return max(0.55, 1.0 / (1.0 + (0.15 * total))), summary
 
 
-def appraise_npc_dataset(dataset: SurveyDataset) -> dict[str, Any]:
+def _tile_key(system_name: str, body_id: str, x: int, y: int, scan_type: str) -> str:
+    return "::".join(
+        [
+            str(system_name).strip().lower(),
+            str(body_id).strip().lower(),
+            str(scan_type).strip().lower(),
+            str(int(x)),
+            str(int(y)),
+        ]
+    )
+
+
+def dataset_tile_keys(dataset: SurveyDataset) -> list[str]:
+    """Return stable logical tile keys for a dataset."""
+    keys = [
+        _tile_key(tile.system_name, tile.body_id, tile.x, tile.y, tile.scan_type)
+        for tile in dataset.tiles.all()
+        .order_by("system_name", "body_id", "scan_type", "x", "y")
+        .only("system_name", "body_id", "x", "y", "scan_type")
+    ]
+    return keys
+
+
+def _transaction_tile_keys(transaction: SurveyMarketTransaction) -> list[str]:
+    metadata = transaction.metadata or {}
+    stored = metadata.get("sold_tile_keys") or metadata.get("tile_keys")
+    if isinstance(stored, list):
+        return [str(key) for key in stored if key]
+    if transaction.dataset_id:
+        try:
+            return dataset_tile_keys(transaction.dataset)
+        except Exception:
+            return []
+    return []
+
+
+def npc_sold_tile_keys(owner_scope: str, owner_id: int) -> set[str]:
+    """Return tile keys this owner has already sold to NPC exchanges."""
+    sold: set[str] = set()
+    transactions = SurveyMarketTransaction.objects.filter(
+        transaction_type=SurveyMarketTransaction.TYPE_NPC_BUYOUT,
+        seller_scope=owner_scope,
+        seller_id=int(owner_id),
+    ).select_related("dataset")
+    for transaction in transactions:
+        sold.update(_transaction_tile_keys(transaction))
+    return sold
+
+
+def npc_sold_tile_summary(dataset: SurveyDataset, owner_scope: str, owner_id: int) -> dict[str, Any]:
+    """Return how much of this dataset has already been paid out by NPC shops."""
+    tile_keys = dataset_tile_keys(dataset)
+    unique_tile_keys = set(tile_keys)
+    sold_keys = npc_sold_tile_keys(owner_scope, owner_id)
+    already_sold = unique_tile_keys.intersection(sold_keys)
+    total = len(unique_tile_keys)
+    sold = len(already_sold)
+    payable = max(0, total - sold)
+    return {
+        "total_tiles": total,
+        "already_sold_tiles": sold,
+        "payable_tiles": payable,
+        "payable_factor": (payable / total) if total else 0.0,
+    }
+
+
+def npc_sold_tile_detail_lines(dataset: SurveyDataset, owner_scope: str, owner_id: int) -> list[str]:
+    """Return player-facing lines describing already-sold NPC tile coverage."""
+    summary = npc_sold_tile_summary(dataset, owner_scope, owner_id)
+    total = int(summary["total_tiles"])
+    sold = int(summary["already_sold_tiles"])
+    payable = int(summary["payable_tiles"])
+    return [
+        f"NPC unsold tiles: {payable}/{total} not previously sold by this player; {sold} already paid out."
+    ]
+
+
+def appraise_npc_dataset(
+    dataset: SurveyDataset,
+    *,
+    seller_scope: str | None = None,
+    seller_id: int | None = None,
+) -> dict[str, Any]:
     """Return NPC exchange appraisal data for one dataset."""
     if _is_earth_dataset(dataset):
         return {
@@ -515,11 +597,28 @@ def appraise_npc_dataset(dataset: SurveyDataset) -> dict[str, Any]:
             "error": "Earth survey data is not accepted; no survey exchange pays for home-world basics.",
         }
 
+    seller_scope = seller_scope or dataset.owner_scope
+    seller_id = int(seller_id if seller_id is not None else dataset.owner_id)
+    sold_tile_summary = npc_sold_tile_summary(dataset, seller_scope, seller_id)
+    if int(sold_tile_summary["total_tiles"]) <= 0:
+        return {
+            "ok": False,
+            "sold_tile_summary": sold_tile_summary,
+            "error": "This dataset contains no tiles to sell.",
+        }
+    if int(sold_tile_summary["payable_tiles"]) <= 0:
+        return {
+            "ok": False,
+            "sold_tile_summary": sold_tile_summary,
+            "error": "All tiles in this dataset have already been sold to an NPC exchange by this seller.",
+        }
+
     base, grade = _grade_band_amount(dataset)
     distance_factor, distance_label = _distance_modifier(dataset)
     rarity_factor, prior_sales = _rarity_modifier(dataset)
     copy_factor, copy_summary = _copy_modifier(dataset)
-    payout = int(math.floor(base * distance_factor * rarity_factor * copy_factor))
+    payable_factor = float(sold_tile_summary["payable_factor"])
+    payout = int(math.floor(base * distance_factor * rarity_factor * copy_factor * payable_factor))
 
     return {
         "ok": payout > 0,
@@ -531,6 +630,8 @@ def appraise_npc_dataset(dataset: SurveyDataset) -> dict[str, Any]:
         "prior_sales": prior_sales,
         "copy_factor": copy_factor,
         "copy_summary": copy_summary,
+        "sold_tile_summary": sold_tile_summary,
+        "payable_factor": payable_factor,
         "payout": max(0, payout),
         "error": "" if payout > 0 else "This dataset has no exchange value.",
     }
@@ -558,6 +659,7 @@ def _format_appraisal(exchange: dict[str, Any], dataset: SurveyDataset, appraisa
         return appraisal.get("error") or "This dataset cannot be appraised here."
 
     copy_summary = appraisal["copy_summary"]
+    sold_summary = appraisal["sold_tile_summary"]
     lines = [
         f"{exchange.get('name', 'Survey Exchange')} appraisal",
         f"  Dataset: #{dataset.id} {dataset.name}",
@@ -569,6 +671,11 @@ def _format_appraisal(exchange: dict[str, Any], dataset: SurveyDataset, appraisa
         f"x{appraisal['copy_factor']:.2f} "
         f"({copy_summary['total']} known copies: "
         f"{copy_summary['digital_license']} digital, {copy_summary['cartridge']} cartridge)",
+        "  NPC unsold tiles: "
+        f"{sold_summary['payable_tiles']}/{sold_summary['total_tiles']} "
+        f"not previously sold by this seller "
+        f"({sold_summary['already_sold_tiles']} already paid out, "
+        f"x{appraisal['payable_factor']:.2f})",
         f"  Exclusive buyout offer: {format_credits(appraisal['payout'])}",
         "",
         f"Use survey exchange sell {dataset.id} confirm to accept.",
@@ -627,12 +734,13 @@ def sell_dataset_to_npc_exchange(caller: Any, dataset: SurveyDataset, exchange: 
     if dataset.owner_scope != seller_scope or int(dataset.owner_id) != int(seller_id):
         return f"You no longer own survey dataset #{dataset.id}."
 
-    appraisal = appraise_npc_dataset(dataset)
+    appraisal = appraise_npc_dataset(dataset, seller_scope=seller_scope, seller_id=seller_id)
     if not appraisal.get("ok"):
         return appraisal.get("error") or "This dataset cannot be sold here."
 
     payout = int(appraisal["payout"])
     root_id = _lineage_root_id(dataset)
+    sold_tile_keys = dataset_tile_keys(dataset)
     metadata = _metadata(dataset)
     commerce = dict(metadata.get("commerce") or {})
     commerce["npc_buyout"] = {
@@ -640,6 +748,7 @@ def sell_dataset_to_npc_exchange(caller: Any, dataset: SurveyDataset, exchange: 
         "exchange_name": exchange.get("name"),
         "seller_id": int(seller_id),
         "payout": payout,
+        "sold_tile_count": len(set(sold_tile_keys)),
         "sold_at": timezone.now().isoformat(),
     }
     metadata["commerce"] = commerce
@@ -677,7 +786,11 @@ def sell_dataset_to_npc_exchange(caller: Any, dataset: SurveyDataset, exchange: 
         price=payout,
         exchange_key=str(exchange.get("exchange_key") or ""),
         exchange_name=str(exchange.get("name") or ""),
-        metadata={"appraisal": appraisal},
+        metadata={
+            "appraisal": appraisal,
+            "sold_tile_count": len(set(sold_tile_keys)),
+            "sold_tile_keys": sorted(set(sold_tile_keys)),
+        },
     )
 
     new_balance = grant_credits(caller, payout)

@@ -1002,9 +1002,10 @@ def render_dataset_detail(dataset_id: int, *, viewer_scope: str, viewer_id: int)
     ]
 
     try:
-        from world.survey.commerce import copy_lineage_detail_lines
+        from world.survey.commerce import copy_lineage_detail_lines, npc_sold_tile_detail_lines
 
         lines.extend(copy_lineage_detail_lines(dataset))
+        lines.extend(npc_sold_tile_detail_lines(dataset, viewer_scope, int(viewer_id)))
     except Exception:
         pass
 

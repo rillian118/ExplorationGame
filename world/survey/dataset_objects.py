@@ -612,7 +612,7 @@ def find_inventory_cartridge(caller: Any, query: str):
     return matches[0]
 
 
-def render_dataset_record_detail(dataset: SurveyDataset, *, cartridge: Any = None) -> str:
+def render_dataset_record_detail(dataset: SurveyDataset, *, cartridge: Any = None, viewer: Any = None) -> str:
     """
     Render a SurveyDataset without applying owner filtering.
 
@@ -643,9 +643,12 @@ def render_dataset_record_detail(dataset: SurveyDataset, *, cartridge: Any = Non
     )
 
     try:
-        from world.survey.commerce import copy_lineage_detail_lines
+        from world.survey.commerce import copy_lineage_detail_lines, npc_sold_tile_detail_lines
 
         lines.extend(copy_lineage_detail_lines(dataset))
+        if viewer is not None:
+            viewer_scope, viewer_id = actor_owner_key(viewer)
+            lines.extend(npc_sold_tile_detail_lines(dataset, viewer_scope, int(viewer_id)))
     except Exception:
         pass
 
@@ -671,7 +674,7 @@ def render_cartridge_detail(cartridge: Any, *, looker: Any = None) -> str:
             f"This survey data cartridge references missing dataset #{dataset_id}."
         )
 
-    return render_dataset_record_detail(dataset, cartridge=cartridge)
+    return render_dataset_record_detail(dataset, cartridge=cartridge, viewer=looker)
 
 
 def render_dataset_or_cartridge_detail(
