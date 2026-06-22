@@ -342,6 +342,91 @@ def valuation_detail_lines(dataset: SurveyDataset) -> list[str]:
     return lines
 
 
+@transaction.atomic
+def revalue_dataset(dataset: SurveyDataset) -> dict[str, Any]:
+    """
+    Recalculate valuation metadata from stored dataset tiles.
+
+    This rescues datasets created before valuation metadata existed without
+    requiring players to re-export coverage.
+    """
+    tiles = list(dataset.tiles.all().order_by("system_name", "body_id", "scan_type", "x", "y"))
+    valuation = calculate_dataset_valuation(tiles)
+    resolutions = [int(tile.resolution or 0) for tile in tiles]
+
+    metadata = dict(dataset.metadata or {})
+    metadata["valuation"] = valuation
+
+    dataset.metadata = metadata
+    dataset.tile_count = len(tiles)
+    dataset.min_resolution = min(resolutions) if resolutions else 0
+    dataset.max_resolution = max(resolutions) if resolutions else 0
+    dataset.save(
+        update_fields=[
+            "metadata",
+            "tile_count",
+            "min_resolution",
+            "max_resolution",
+            "updated_at",
+        ]
+    )
+
+    try:
+        from world.survey.commerce import ensure_dataset_lineage
+
+        ensure_dataset_lineage(dataset)
+    except Exception:
+        pass
+
+    return valuation
+
+
+def render_revalue_result(dataset_id: int) -> str:
+    """Admin-facing result for revaluing one dataset by id."""
+    try:
+        dataset = SurveyDataset.objects.get(id=int(dataset_id))
+    except SurveyDataset.DoesNotExist:
+        return f"No survey dataset #{dataset_id} was found."
+
+    valuation = revalue_dataset(dataset)
+    return (
+        f"Revalued survey dataset #{dataset.id}: {dataset.name} "
+        f"({dataset.tile_count} tiles, "
+        f"value {_safe_int(valuation.get('points'))} VP, "
+        f"{valuation.get('grade') or 'ungraded'})."
+    )
+
+
+def render_revalue_all_result(*, only_missing: bool = True, limit: int = 100) -> str:
+    """
+    Admin-facing batch revalue helper.
+
+    Defaults to datasets missing valuation metadata so it is safe for old-data
+    cleanup. A limit keeps accidental all-database runs bounded.
+    """
+    datasets = []
+    max_count = max(1, int(limit))
+    for dataset in SurveyDataset.objects.order_by("id").iterator():
+        if only_missing and isinstance(dataset.metadata, dict) and dataset.metadata.get("valuation"):
+            continue
+        datasets.append(dataset)
+        if len(datasets) >= max_count:
+            break
+
+    if not datasets:
+        return "No survey datasets needed valuation backfill."
+
+    count = 0
+    total_tiles = 0
+    for dataset in datasets:
+        revalue_dataset(dataset)
+        count += 1
+        total_tiles += int(dataset.tile_count or 0)
+
+    suffix = " missing valuation" if only_missing else ""
+    return f"Revalued {count}{suffix} survey dataset(s), covering {total_tiles} tile(s)."
+
+
 def summarize_coverage(owner_scope: str, owner_id: int) -> dict[str, Any]:
     """
     Return compact coverage summary for an owner.

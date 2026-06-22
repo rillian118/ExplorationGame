@@ -37,6 +37,8 @@ from world.survey.services import (
     render_coverage_status,
     render_dataset_list,
     render_export_result,
+    render_revalue_all_result,
+    render_revalue_result,
 )
 
 
@@ -266,6 +268,40 @@ class CmdSurveyExchangeAdmin(MuxCommand):
         self.caller.msg(handle_survey_exchange_admin_command(self.caller, self.args, self.switches))
 
 
+class CmdSurveyRevalueAdmin(MuxCommand):
+    """
+    Recalculate survey dataset valuation metadata.
+
+    Usage:
+      @surveyrevalue <dataset id>
+      @surveyrevalue/all [limit]
+    """
+
+    key = "@surveyrevalue"
+    locks = "cmd:perm(Admin)"
+    help_category = "Survey"
+
+    def func(self):
+        raw = (self.args or "").strip()
+        if "all" in self.switches:
+            limit = 100
+            if raw:
+                try:
+                    limit = int(raw)
+                except ValueError:
+                    self.caller.msg("Usage: @surveyrevalue/all [limit]")
+                    return
+            self.caller.msg(render_revalue_all_result(only_missing=True, limit=limit))
+            return
+
+        dataset_id = raw.lstrip("#")
+        if not dataset_id.isdigit():
+            self.caller.msg("Usage: @surveyrevalue <dataset id> or @surveyrevalue/all [limit]")
+            return
+
+        self.caller.msg(render_revalue_result(int(dataset_id)))
+
+
 class SurveyCmdSet(CmdSet):
     """
     Command set for survey commands.
@@ -276,3 +312,4 @@ class SurveyCmdSet(CmdSet):
     def at_cmdset_creation(self):
         self.add(CmdSurvey())
         self.add(CmdSurveyExchangeAdmin())
+        self.add(CmdSurveyRevalueAdmin())

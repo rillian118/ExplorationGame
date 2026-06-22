@@ -246,6 +246,18 @@ SURVEY_COMMAND_INDEX = [
         "summary": "Clear the NPC survey exchange marker from the current room.",
         "lock": "cmd:perm(Builders)",
     },
+    {
+        "access": "Admin",
+        "command": "@surveyrevalue <dataset id>",
+        "summary": "Recalculate valuation metadata for one survey dataset.",
+        "lock": "cmd:perm(Admins)",
+    },
+    {
+        "access": "Admin",
+        "command": "@surveyrevalue/all [limit]",
+        "summary": "Backfill missing valuation metadata for old survey datasets.",
+        "lock": "cmd:perm(Admins)",
+    },
 ]
 
 
@@ -266,15 +278,20 @@ def _can_access(caller, lockstring: str) -> bool:
     if lockstring == "cmd:all()":
         return True
 
-    if "perm(Admins)" in lockstring:
+    if "perm(Admins)" in lockstring or "perm(Admin)" in lockstring:
         try:
-            return bool(caller.check_permstring("Admins"))
+            return bool(caller.check_permstring("Admins") or caller.check_permstring("Admin"))
         except Exception:
             return False
 
-    if "perm(Builders)" in lockstring:
+    if "perm(Builders)" in lockstring or "perm(Builder)" in lockstring:
         try:
-            return bool(caller.check_permstring("Builders") or caller.check_permstring("Admins"))
+            return bool(
+                caller.check_permstring("Builders")
+                or caller.check_permstring("Builder")
+                or caller.check_permstring("Admins")
+                or caller.check_permstring("Admin")
+            )
         except Exception:
             return False
 
