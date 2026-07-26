@@ -73,3 +73,6 @@ WorldGen V0.01a/meros_iv_arrays.npz
 Exploration MUD Project Brief.pdf
 .gitignore
 Exploration MUD Project Brief.txt
+
+# Local agent credentials. Never commit private SSH material.
+.codex-ssh/
